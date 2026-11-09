@@ -1,12 +1,7 @@
 #include "resultexporter.h"
 #include <QSaveFile>
-#include <QTemporaryFile>
-#include <QFileInfo>
 #include <functional>
-#include "xlsxdocument.h"
-#include "xlsxworksheet.h"
-#include "xlsxformat.h"
-#include "xlsxworkbook.h"
+#include "qtxlsxwriter.h"
 
 namespace {
 QString cellText(const ResultCell &cell)
@@ -65,61 +60,17 @@ QString ResultExporter::csv(const QString &path, const QVector<QueryResult> &res
     return {};
 }
 
-// Preserve exact values as string cells, reject Excel limits, and stage QXlsx output before atomic replacement.
+// Traverse result sections; the Qt wrapper owns XLSX formatting, limits and safe publication.
 QString ResultExporter::xlsx(const QString &path, const QVector<QueryResult> &results, const QVector<int> &widths)
 {
-    QXlsx::Document book;
-    book.workbook()->setHtmlToRichStringEnabled(false);
-    book.addSheet("Resultaten");
-    book.selectSheet("Resultaten");
-    QXlsx::Format normal, heading;
-    normal.setNumberFormat("@");
-    normal.setVerticalAlignment(QXlsx::Format::AlignTop);
-    heading = normal;
-    heading.setFontBold(true);
-    heading.setPatternBackgroundColor(QColor(222, 234, 245));
+    QtXlsxWriter book(path);
     int columns = 1;
     for (const auto &result : results) columns = qMax(columns, int(result.columns.size()));
-    if (columns > 16384) return "Het resultaat overschrijdt de kolomlimiet van Excel. Gebruik CSV.";
-    book.setColumnWidth(1, columns, 28);
-    for (int column = 0; column < qMin(columns, int(widths.size())); ++column)
-        book.setColumnWidth(column + 1, qBound(5.0, (widths[column] - 5) / 7.0, 255.0));
-    int row = 0;
-    QString error;
-    const bool written = visit(results, true, [&](const QStringList &values, bool bold) {
-        if (++row > 1048576 || values.size() > 16384) {
-            error = "Het resultaat overschrijdt de rij- of kolomlimiet van Excel. Gebruik CSV."; return false;
-        }
-        for (int column = 0; column < values.size(); ++column) {
-            if (values[column].size() > 32767) {
-                error = QString("Cel op rij %1, kolom %2 bevat meer dan 32.767 tekens. Gebruik CSV om de waarde volledig te bewaren.").arg(row).arg(column + 1);
-                return false;
-            }
-            // Explicit strings preserve large integers, leading zeroes and SQL text beginning with '='.
-            if (!book.currentWorksheet()->writeString(row, column + 1, values[column], bold ? heading : normal)) {
-                error = QString("Excel-cel op rij %1, kolom %2 kon niet worden geschreven.").arg(row).arg(column + 1);
-                return false;
-            }
-        }
-        return true;
-    });
-    if (!written) return error;
-    // QXlsx closes its output device. QSaveFile must only be closed by commit(),
-    // so stage the workbook in a temporary file, then copy it atomically.
-    QTemporaryFile temporary(QFileInfo(path).absolutePath() + "/.pgadm-export-XXXXXX");
-    if (!temporary.open()) return temporary.errorString();
-    if (!book.saveAs(&temporary)) return "Het Excel-bestand kon niet worden geschreven.";
-    if (!temporary.isOpen() && !temporary.open()) return temporary.errorString();
-    if (!temporary.seek(0)) return temporary.errorString();
-    QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly)) return file.errorString();
-    while (!temporary.atEnd()) {
-        const auto bytes = temporary.read(65536);
-        if (temporary.error() != QFileDevice::NoError) return temporary.errorString();
-        if (file.write(bytes) != bytes.size()) return file.errorString();
-    }
-    if (!file.commit()) return file.errorString();
-    return {};
+    if (!book.setColumnWidths(columns, widths)) return book.errorString();
+    if (!visit(results, true, [&book](const QStringList &values, bool heading) {
+        return book.writeRow(values, heading);
+    })) return book.errorString();
+    return book.save();
 }
 
 // Escape every stored value into an overview table suitable for clipboard pasting.

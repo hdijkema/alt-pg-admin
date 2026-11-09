@@ -5,8 +5,12 @@
 #include "cellviewer.h"
 #include "sqlhighlighter.h"
 #include "resultexporter.h"
-#include "xlsxdocument.h"
-#include "xlsxcell.h"
+#include "qtxlsxwriter.h"
+#include <QProcess>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QDir>
 #include <QTemporaryDir>
 #include <QMimeData>
 #include <QFileDialog>
@@ -97,21 +101,32 @@ SELECT $$waarde;$$;
         QVERIFY(bytes.contains("\"NULL\",\"\\x0001ff\",\"001234567890123456789\""));
         QVERIFY(!bytes.contains("Overzicht"));
         csv.close();
-        const auto xlsxPath = directory.filePath("result.xlsx");
+        QVERIFY(QDir(directory.path()).mkdir(QString::fromUtf8("caf\xc3\xa9")));
+        const auto xlsxPath = directory.filePath(QString::fromUtf8("caf\xc3\xa9/resultaat \xe6\xbc\xa2.xlsx"));
         auto error = ResultExporter::xlsx(xlsxPath, {result}, {333, 250});
         QVERIFY2(error.isEmpty(), qPrintable(error));
         {
-            QXlsx::Document workbook(xlsxPath);
-            QCOMPARE(workbook.sheetNames(), QStringList{"Resultaten"});
-            QCOMPARE(workbook.read(1, 1).toString(), QString("1. Overzicht"));
-            QCOMPARE(workbook.read(2, 1).toString(), QString("naam"));
-            QCOMPARE(workbook.read(3, 2).toString(), result.rows[0][1].text);
-            QCOMPARE(workbook.read(3, 3).toString(), QString("NULL"));
-            QCOMPARE(workbook.read(3, 4).toString(), QString("\\x0001ff"));
-            QCOMPARE(workbook.read(3, 5).toString(), number.text);
-            QCOMPARE(workbook.read(4, 2).toString(), QString("=1+1"));
-            QCOMPARE(workbook.cellAt(4, 2)->cellType(), QXlsx::Cell::SharedStringType);
-            QVERIFY(workbook.columnWidth(1) > 40);
+            QProcess reader;
+            reader.start(QString::fromUtf8(PGADM_TEST_PYTHON), {QFINDTESTDATA("inspect-xlsx.py"), xlsxPath});
+            QVERIFY(reader.waitForFinished(10000));
+            QVERIFY2(reader.exitCode() == 0, reader.readAllStandardError().constData());
+            const auto workbook = QJsonDocument::fromJson(reader.readAllStandardOutput()).object();
+            QCOMPARE(workbook.value("sheets").toArray(), QJsonArray{"Resultaten"});
+            const auto cells = workbook.value("cells").toObject();
+            QCOMPARE(cells.value("A1").toString(), QString("1. Overzicht"));
+            QCOMPARE(cells.value("A2").toString(), QString("naam"));
+            QCOMPARE(cells.value("A3").toString(), result.rows[0][0].text);
+            QCOMPARE(cells.value("B3").toString(), result.rows[0][1].text);
+            QCOMPARE(cells.value("C3").toString(), QString("NULL"));
+            QCOMPARE(cells.value("D3").toString(), QString("\\x0001ff"));
+            QCOMPARE(cells.value("E3").toString(), number.text);
+            QCOMPARE(cells.value("B4").toString(), QString("=1+1"));
+            QCOMPARE(workbook.value("types").toObject().value("B4").toString(), QString("inlineStr"));
+            QVERIFY(workbook.value("formulas").toArray().isEmpty());
+            QVERIFY(workbook.value("bold").toArray().contains("A1"));
+            QVERIFY(workbook.value("bold").toArray().contains("A2"));
+            QVERIFY(!workbook.value("bold").toArray().contains("A3"));
+            QVERIFY(workbook.value("widths").toArray().first().toDouble() > 40);
         }
         QFile original(xlsxPath);
         QVERIFY(original.open(QIODevice::ReadOnly));
@@ -122,6 +137,12 @@ SELECT $$waarde;$$;
         QVERIFY(original.open(QIODevice::ReadOnly));
         QCOMPARE(original.readAll(), originalBytes);
         original.close();
+        result.rows[0][1].text = QString("NUL") + QChar(0) + "tekst";
+        QVERIFY(!ResultExporter::xlsx(xlsxPath, {result}, {}).isEmpty());
+        QVERIFY(original.open(QIODevice::ReadOnly));
+        QCOMPARE(original.readAll(), originalBytes);
+        original.close();
+        result.rows[0][1].text = QString(32768, 'x');
         QVERIFY(ResultExporter::csv(csvPath, {result}).isEmpty());
         QVERIFY(csv.open(QIODevice::ReadOnly));
         QVERIFY(csv.readAll().contains(QByteArray(32768, 'x')));

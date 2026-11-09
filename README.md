@@ -1,218 +1,345 @@
-﻿# PgAdm Qt
+# PgAdm Qt
 
-Native PostgreSQL-beheeromgeving in C++ en Qt Widgets, met opgeslagen wachtwoorden via QtKeychain, een databaseboom, query-uitvoering en een doorlopend resultatenoverzicht. Beheerdialogen voor het wijzigen van objecten volgen daarna.
+A native PostgreSQL administration application built with C++17 and Qt Widgets.
+It provides connection profiles, a lazy object browser, query execution, saved
+queries, result export, server roles and database maintenance tasks.
 
-De technische opzet en gegevensstromen staan in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). De publieke headers beschrijven hun doel, voorwaarden, resultaat en interne samenwerking in het Engels. De projectafspraken vertalen Hans' Racket-stijl naar eenvoudige C++/Qt-code; Racket-specifieke syntax en packagevoorzieningen worden niet overgenomen.
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for component responsibilities and
+data flow, [the implementation plan](../STAPPENPLAN.md) for remaining work, and
+[the architecture analysis](../ANALYSE-QT.md) for the original design rationale.
+Technical documentation and source comments are written in English. UI labels
+quoted below retain their Dutch spelling so they can be found in the application.
 
-## Gebruiken
+## Quick start
 
-1. Start `build\Release\pgadmin_qt.exe`, of Build/Run vanuit Qt Creator.
-2. Kies **Verbinding > Nieuw profiel** en vul naam, host, poort en gebruiker in. Voor de gebruikelijke serververbinding: gebruiker **postgres**, onderhoudsdatabase **postgres**.
-3. Kies de SSL-modus en de verbindingstime-out (standaard 10 seconden).
-4. Selecteer het profiel en kies **Verbinden**, of dubbelklik op het profiel.
-5. Als PostgreSQL een wachtwoord vereist, verschijnt een wachtwoordvenster. Vink **Wachtwoord onthouden** aan om het na succesvol verbinden via QtKeychain in de systeemkluis te bewaren. Bestaande libpq-voorzieningen zoals pgpass kunnen ook worden gebruikt.
-6. De statusbalk toont de verbinding en het profiel wordt vet weergegeven. De tooltip bevat serverversie en backend-PID.
-7. Open **Databases**, klik met rechts op bijvoorbeeld **lts_ontwikkel** en kies **Querytab openen**. De benodigde databaseverbinding wordt geopend en de tab krijgt die database als doel.
-8. Gebruik **Verbinding verbreken / poging annuleren** om te sluiten of een verbindingspoging af te breken.
+1. Run `build/Release/pgadmin_qt.exe`, or build/run through Qt Creator.
+2. Choose **Verbinding > Nieuw profiel** and enter the host, port and user.
+   Normally use `postgres` as the maintenance database; the user may also be
+   `postgres`, depending on your server configuration.
+3. Select the SSL mode and connection timeout (default: 10 seconds).
+4. Select the profile and choose **Verbinden**, or double-click the profile.
+5. Enter a password if requested. **Wachtwoord onthouden** saves it in the system
+   credential vault after a successful connection. Existing libpq facilities such
+   as pgpass are also available.
+6. Expand **Databases**, right-click the desired database and select
+   **Querytab openen**. The new query tab targets that database.
+7. Enter SQL and press F5. A selection executes only the selected text; otherwise
+   the entire script executes. **Query annuleren** cancels the running script.
 
-Profielen wijzigen of verwijderen kan als de verbinding is gesloten. Meerdere profielen kunnen tegelijk verbonden zijn, met een limiet van acht actieve verbindingen. Dubbelklikken opent voortaan een verbinding; wijzigen kan via het menu of de rechtermuisknop.
+The connection selector above the editor identifies both server and database.
+Selecting a different tree node does not retarget an existing query tab. Ctrl+N
+inherits the current query tab's database. Disconnecting leaves that target
+visible but unavailable; the application does not silently switch databases.
 
-## Wachtwoord onthouden
+Profiles can be edited or removed when they are not in use. Several profiles may
+be connected at once. The status bar shows connection state; the server tooltip
+includes the server version and backend PID. No server connections, catalog
+queries or vault reads happen automatically at startup.
 
-Het profielvenster heeft een wachtwoordveld en de optie Wachtwoord onthouden. Daar kan een wachtwoord worden ingevoerd of gewijzigd. Een leeg veld laat een eerder opgeslagen wachtwoord intact. Uitvinken en opslaan verwijdert het opgeslagen wachtwoord. Een nieuw ingevoerd wachtwoord zonder onthouden blijft alleen in geheugen beschikbaar voor de eerstvolgende verbinding. Het verwijderen van een profiel verwijdert ook de bijbehorende kluisvermelding.
+## Password storage and TLS
 
-QtKeychain 0.17.0 gebruikt de systeemkluis; de applicatie gebruikt geen eigen Windows-wachtwoord-API. Plaintext-fallback is expliciet uitgeschakeld. Alleen de voorkeur voor onthouden staat in settings.ini. De sleutel is gekoppeld aan profiel, host, poort en gebruiker; het wachtwoord kan daarmee voor databases op dezelfde server worden hergebruikt. Een gewijzigde host of gebruiker krijgt een andere sleutel. Fouten bij kluisopslag worden gemeld en leiden niet tot opslag als gewone tekst.
+The profile editor accepts a password and a remember-password preference. An empty
+password field keeps the existing saved secret. Clearing the preference and saving
+removes it. A newly entered password without persistence is kept in memory for the
+next connection. Deleting a profile also removes its credential entry.
 
-## Databaseboom
+QtKeychain uses the system vault, with plaintext fallback disabled. Only the
+remember preference is stored in settings.ini. Vault keys include profile, host,
+port and user, allowing password reuse across databases on the same server.
+Changing the host or user selects a different key. Vault failures are reported.
 
-Na verbinden verschijnt **server → Databases → database → schema → Tabellen / Views / Materialized views / Sequences → object → kolommen**. De boom laadt de inhoud bij het uitklappen. Template- en systeemschema's worden momenteel verborgen. Databases zonder CONNECT-recht of met uitgeschakelde verbindingen worden wel getoond, maar zijn niet te openen. Alleen schema's met USAGE-recht worden weergegeven.
+SSL modes are `prefer`, `require`, `verify-ca`, `verify-full` and `disable`.
+Certificate files currently use libpq's normal configuration. Certificate pickers
+and SSH tunnels are not implemented. A successful connection with a custom TLS
+certificate chain has not been independently validated.
 
-Klik met rechts op een database en kies **Querytab openen**, of dubbelklik op de database. Deze actie werkt ook als de database al verbonden is en blijft onthouden wanneer het verbinden nog bezig is. **Verbinden** en **Querytab openen** zijn aparte acties. Iedere server/database-combinatie heeft een eigen queryverbinding; tabs met dezelfde combinatie delen een sessie. De onderhoudsdatabase van het profiel blijft ongewijzigd: een serververbinding op postgres kan naast queryverbindingen op lts_ontwikkel bestaan.
+## Database and object browser
 
-De keuzelijst boven de editor vermeldt server én database. Alleen een item selecteren in de boom verandert het doel van bestaande querytabs niet. Ctrl+N neemt de database van de huidige tab over. Als een verbinding wordt verbroken, blijft de gekozen database zichtbaar als niet verbonden en wordt uitvoeren uitgeschakeld; de tab schakelt niet stilzwijgend naar een andere database. Via de rechtermuisknop of **Verbinding > Objectboom vernieuwen** worden externe wijzigingen opgehaald.
+The lazy tree follows this structure:
 
-De objectboom gebruikt aparte metadataverbindingen, zodat een lange gebruikersquery of open transactie de browser niet bezet houdt. Metadata wordt alleen gelezen, niet gewijzigd. Er zijn maximaal acht metadataverbindingen naast de maximaal acht queryverbindingen; ongebruikte metadataverbindingen worden bij behoefte vervangen. Profielen en vensterinstellingen laden lokaal; bij starten wordt niet automatisch verbonden en wordt de wachtwoordkluis niet geopend.
+```text
+server > Databases > database > schema
+    > Tables / Views / Materialized views / Sequences > object > columns
+```
 
-SSL-modi: prefer, require, verify-ca, verify-full en disable. Certificaatbestanden gebruiken nu de standaard libpq-instellingen. Certificaatkeuze via het profiel en SSH-tunnels zijn nog niet gebouwd. Een geslaagde TLS-verbinding met een eigen certificaatketen is nog niet afzonderlijk getest.
+Children are fetched when expanded. Template databases and system schemas are
+currently hidden. Databases without CONNECT permission or with connections
+Disabled remain visible but cannot be opened. Schemas require USAGE permission.
+Use the context menu or **Verbinding > Objectboom vernieuwen** to refresh changes
+made outside this application.
 
-## Overige functies
+Right-click or double-click a database to open a query tab, including when that
+database is already connected. The profile's maintenance database is unchanged:
+a maintenance connection to postgres can coexist with query connections elsewhere.
+Query tabs targeting the same server/database currently share one session and its
+transaction. One script may run at a time per session. There are at most eight
+query sessions, plus up to eight separate metadata connections. Idle metadata
+connections may be replaced when needed. A long query does not occupy the
+browser's metadata session.
 
-Via de rechtermuisknop op een verbonden **server** of **database** zijn nu beschikbaar:
+### Object properties and definition SQL
 
-- **Database aanmaken...**: een lege UTF-8-database op basis van template0; eigenaar is de ingelogde gebruiker.
-- **Databasebackup...**: een volledige database, inclusief data, naar een PostgreSQL custom-archief (`.backup`) of SQL-script (`.sql`). Dit gebruikt pg_dump rechtstreeks en valt niet onder de queryresultaatlimieten. Globale serverrollen worden niet door een databasebackup aangemaakt.
-- **Database herstellen...**: herstel een archief met pg_restore of een SQL-bestand met psql naar de expliciet getoonde database. Maak bij voorkeur eerst een lege database aan. Archieven worden met één transactie en stoppen-bij-fouten hersteld. Eigenaren/privileges overslaan staat standaard aan; bestaande archiefobjecten eerst verwijderen staat standaard uit. Deze opties gelden alleen voor archieven. SQL-bestanden bepalen zelf hun SQL/psql-commando's; standaard pg_dump-scripts worden transactioneel uitgevoerd.
-- **Database verwijderen...**: de exacte naam moet ter bevestiging worden ingetypt. postgres, template0/template1 en de onderhoudsdatabase van het profiel zijn beschermd. Andere clients worden niet geforceerd verbroken; PostgreSQL kan verwijderen weigeren wegens verbindingen of rechten.
+Right-click a database, schema, relation or column and choose
+**Eigenschappen / definitie-SQL**. The **Objecteigenschappen** dock follows the
+selection while visible. **Vernieuwen** reloads the selected properties.
 
-Op serverniveau kies je voor backup, restore of verwijderen eerst de database uit de geladen lijst. Het taakvenster houdt zijn doel vast als je daarna elders in de boom klikt. Starten is de uitvoerbevestiging. De taken werken op de achtergrond met loguitvoer en **Annuleren**, terwijl de rest van het programma bruikbaar blijft. Tijdens de taak loopt **Verstreken tijd** mee in uren, minuten en seconden. Na slagen, falen of annuleren blijft de **Totale duur** staan, inclusief milliseconden. Bij backup telt ook het definitief opslaan van het bestand mee. De voortgangsbalk is onbepaald: de tools geven geen betrouwbaar totaalpercentage door. Een mislukt/geannuleerd backupverzoek vervangt geen bestaand bestand. CREATE/DROP kan bij laat annuleren al zijn voltooid; controleer dan de vernieuwde boom.
+For tables, views, materialized views, sequences and columns, the
+**Definitie-SQL** tab runs the bundled pg_dump on demand. A column shows its parent
+relation's definition. Database and schema nodes currently show properties only.
+Definition SQL can be copied or saved, but is never executed automatically.
 
-Restore en verwijderen sluiten de eigen verbindingen met de doeldatabase, inclusief metadata; open transacties worden teruggedraaid zoals het taakvenster vermeldt. Actieve eigen queries moeten eerst worden afgerond/geannuleerd. De doelboom wordt tijdelijk geblokkeerd voor nieuwe eigen verbindingen en na afloop ververst. Queryteksten blijven in hun tabs staan met de oorspronkelijke, eventueel nu verbroken databasecontext. Dit beheert databases; tabel-/schema-editors en rollenbeheer zijn nog vervolgwerk.
+This is a schema-only pg_dump script without data, ownership or privilege commands.
+It may contain psql directives unsupported by the query editor. A single object's
+script does not guarantee inclusion of all required schemas, types or dependencies
+and is not a full backup. Permission failures, missing objects/tools and tool
+errors are displayed. The lock timeout is two seconds; the overall timeout is
+30 seconds. Changing selection or hiding the dock cancels obsolete work.
 
-Klik met rechts op een database, schema, tabel, view, sequence of kolom en kies **Eigenschappen / definitie-SQL**. Het paneel **Objecteigenschappen** verschijnt onderaan en volgt daarna de selectie in de boom. Eigenschappen worden alleen opgehaald terwijl het paneel zichtbaar is, via dezelfde aparte metadataverbindingen als de boom. **Vernieuwen** haalt de geselecteerde eigenschappen opnieuw op. Het paneel kan ook via **Beeld** worden getoond of verborgen.
+## Query editor and results
 
-Bij tabellen, views/materialized views, sequences en kolommen haalt het tabblad **Definitie-SQL** op verzoek een schema-only script op via de meegeleverde PostgreSQL 18 `pg_dump`. Een kolom toont de definitie van het bovenliggende object. SQL kan worden gekopieerd of als bestand opgeslagen. Database- en schemanodes tonen voorlopig alleen eigenschappen.
+- Ctrl+N/Ctrl+W open and close tabs; Ctrl+O/Ctrl+S open and save UTF-8 SQL files.
+- SQL highlighting recognises keywords, strings, quoted identifiers, numbers,
+  nested block comments and PostgreSQL dollar-quoted bodies.
+- Unsaved changes are marked and checked before closing or replacing a document.
+- The editor/result split and dock positions are adjustable and persisted.
 
-Het definitiebestand bevat geen tabeldata, eigenaar- of privilegecommando's. Het is een origineel pg_dump-script voor **psql** en kan psql-directieven bevatten die de query-editor niet ondersteunt. De definitie van één object garandeert niet dat alle afhankelijke schema's/types/objecten zijn meegenomen. Dit is geen volledige backup. Ontbrekende rechten, een verdwenen object, ontbrekende tools en toolfouten worden getoond; een geblokkeerde lock wordt na twee seconden opgegeven en de gehele taak na dertig seconden. Een andere selectie of het sluiten van het paneel stopt een overbodige dump. Er wordt geen definitie-SQL automatisch uitgevoerd.
+Script statements run separately, in order, stopping at the first error. Without
+explicit BEGIN/COMMIT, each successful statement commits separately. Completion
+reports the actual transaction state, including when ROLLBACK is needed. Query
+cancellation skips subsequent statements.
 
-- Meerdere SQL-tabbladen met Ctrl+N en Ctrl+W.
-- UTF-8 SQL-bestanden openen en opslaan met Ctrl+O en Ctrl+S.
-- SQL-syntaxkleuring voor sleutelwoorden, tekst, geciteerde namen, getallen en commentaar, inclusief genest blokcommentaar en dollar-quoted PostgreSQL-bodies.
-- Markering en controle op niet-opgeslagen wijzigingen.
-- Tabbladen Resultaten, Meldingen en Uitvoeringsplan.
-- Verplaatsbare objectbrowser, aanpasbare editor/resultaatverdeling en opgeslagen vensterindeling.
+The result area is one native QTableView. Section names, column headings, data
+and completion messages continue vertically even when statements have different
+columns. Separate result tabs are not created per statement.
 
-## Queries en resultaten
+- **Tussenresultaten tonen** includes intermediate results (enabled by default).
+  Disabling it retains only the final result on the next execution.
+- Add `-- @resultaat: Customer overview` before a statement to name its section.
+- **Kopi?ren** copies the displayed overview as TSV and escaped HTML, including
+  headings, stored full cell values and status messages.
+- **CSV opslaan...** writes UTF-8 with a BOM, comma delimiters, quoted fields and
+  doubled quotes. One result is a plain table; multiple results retain sections.
+- **Excel opslaan...** writes one XLSX overview sheet with the selected widths.
+  Values are explicit strings, preserving leading zeroes, large numbers and text
+  beginning with `=`. Cells exceeding 32,767 UTF-16 code units, or containing NUL,
+  fail with a message suggesting CSV. Existing output files remain intact.
+- Exports run in the background from the stored results. They do not rerun SQL.
+  Truncation is marked and requires confirmation before export. NULL appears as
+  `NULL`; bytea uses hexadecimal `\x...` notation.
+- EXPLAIN output is included in the result overview. **Uitvoeringsplan** also
+  displays the latest available plan; **Meldingen** lists notices and errors.
 
-Het rechterpaneel **Bewaarde queries** bevat lokaal opgeslagen scripts. Kies **Huidige opslaan...** (of Ctrl+Alt+S) en geef een naam. Zoek in de lijst en dubbelklik of druk Enter om een query te openen; de huidige databasekeuze wordt overgenomen. Een al geopende query krijgt de focus, zodat onopgeslagen bewerkingen behouden blijven. Ctrl+S bewaart volgende wijzigingen. Hernoemen en verwijderen kan in hetzelfde paneel. Verwijderen houdt de tekst in open tabs beschikbaar als niet-opgeslagen query. Via **Beeld** kan het paneel worden verborgen of teruggehaald.
+The splitter handles ordinary/E-strings, double quotes, dollar quotes, line
+comments and nested block comments. It is not a complete PostgreSQL grammar
+parser. psql directives and COPY data streams are unsupported in the query editor;
+a COPY stream closes the connection with an explanation. Keep
+`standard_conforming_strings=on`; execution stops if it is disabled. Compound SQL
+bodies without dollar quoting are not a supported script case.
 
-Kies boven de querylijst **Alle categorieën**, **Zonder categorie** of een eigen categorie.
-Selecteer een query en klik **Categorie...** om een bestaande categorie te kiezen
-of een nieuwe naam te typen. Maak het veld leeg om de query weer zonder categorie
-te bewaren. Zoeken werkt binnen de gekozen categorie. Nieuwe queries krijgen bij
-opslaan de geselecteerde categorie; bestaande queries behouden hun categorie.
-Categorieën zonder queries verdwijnen uit de keuzelijst. Querynamen blijven uniek
-binnen de hele bibliotheek.
+### Saved queries and categories
 
-De scripts staan als gewone UTF-8 `.sql`-bestanden in de map `queries` naast `settings.ini` (standaard de applicatieconfiguratiemap). De bestandsnamen coderen de querynamen; bij starten worden de namen en categorieën gelezen. SQL wordt pas geladen bij openen. De categorieën staan apart in `queries/categories.ini`; neem dat bestand mee bij het kopiëren van je querybibliotheek. Categoriseren verandert de SQL-bestanden en hun kolombreedtes niet.
+The **Bewaarde queries** dock stores named scripts locally. Use **Huidige opslaan...**
+or Ctrl+Alt+S, then double-click or press Enter to reopen one. An already-open
+query receives focus so unsaved edits survive. Rename/delete actions are in the
+same panel. Deleting a saved query leaves its open text as an unsaved document.
+The dock can be shown or hidden through **Beeld**.
 
-Sleep de scheidingslijnen in de bovenste kolomkop om de breedte van resultaatkolommen te wijzigen. Dubbelklik op een scheidingslijn voor passend maken, of klik met rechts op de kolomkop voor een exacte breedte, alle kolommen passend maken of de standaardbreedte herstellen. Breedtes gelden per kolompositie in het doorlopende overzicht. Elke bewaarde query en elk SQL-bestand onthoudt automatisch zijn eigen breedtes, ook na herstarten. Bij hernoemen in het paneel gaat deze indeling mee. Nieuwe, nog niet opgeslagen queries gebruiken de algemene breedtes. De indeling staat lokaal in de instellingen, niet in de SQL zelf.
+Use the category selector for **Alle categorie?n**, **Zonder categorie** or a named
+category. Select a query and choose **Categorie...** to select an existing category
+or type a new one. An empty category removes the assignment. Search applies inside
+the selected category. Newly saved queries inherit the active category; existing
+queries keep theirs. Empty categories disappear. Query names remain unique across
+the library, case-insensitively.
 
-Kies boven de editor een verbonden server/database en druk F5. Als tekst is geselecteerd, wordt alleen die selectie uitgevoerd; anders het hele script. De opdrachten worden afzonderlijk en in volgorde uitgevoerd. Bij de eerste fout stopt het script. Zonder expliciete BEGIN/COMMIT is elke geslaagde opdracht afzonderlijk gecommit. Open transacties en een benodigde ROLLBACK worden bij afronding getoond. Tabs met dezelfde server/database delen op dit moment de sessie en transactie; per verbinding kan één uitvoering tegelijk lopen. De gekozen verbinding staat expliciet boven de editor.
+Scripts are ordinary UTF-8 SQL files under `queries` beside settings.ini. Their
+filenames encode the query names. Category metadata is in `queries/categories.ini`;
+include that file when copying the library. Startup lists names and categories,
+loading SQL only when opened. Categorisation changes neither SQL text nor paths.
 
-Onder de editor staat één native QTableView met een eigen model. Resultaatnamen, kolomkoppen, rijen en voltooiingsmeldingen lopen door in hetzelfde overzicht, ook als opdrachten verschillende kolommen teruggeven. Er worden geen aparte resultaattabs per opdracht gemaakt.
+Drag result header boundaries to resize columns, double-click for content sizing,
+or use the header context menu for exact widths, all-column sizing or defaults.
+Widths are stored by column position per saved query/SQL file, including across
+restarts and query renames. Unsaved tabs use the general default. Layout metadata
+is stored separately from SQL.
 
-- **Tussenresultaten tonen**: standaard aan. Uitgevinkt blijft alleen het laatste resultaat zichtbaar. De instelling geldt bij de volgende uitvoering en wordt bewaard.
-- **Kopiëren**: zet het hele weergegeven overzicht op het klembord als tekst met tabgescheiden tabelwaarden en als HTML-tabel voor plakken in Excel, inclusief headings, volledige opgeslagen celwaarden en statusregels.
-- **CSV opslaan...**: UTF-8 met BOM, komma als scheidingsteken en aangehaalde velden met correct verdubbelde aanhalingstekens. Eén resultaat geeft kolomkoppen en gegevens; meerdere resultaten geven afzonderlijke benoemde blokken in hetzelfde bestand.
-- **Excel opslaan...**: één `.xlsx`-werkblad met de resultaatblokken en de ingestelde kolombreedtes. Waarden worden als tekst geschreven, zodat grote getallen, voorloopnullen en tekst die met `=` begint intact blijven. Excel ondersteunt maximaal 32.767 tekens per cel; bij een langere waarde stopt de export met een melding en kan CSV worden gebruikt. Een bestaand bestand blijft dan intact.
-- Exports schrijven op de achtergrond en vervangen het doelbestand pas na succesvol schrijven. Ze gebruiken de lokaal opgeslagen resultaten; ingekorte waarden worden gemarkeerd en bij export wordt vooraf om bevestiging gevraagd. NULL wordt weergegeven als `NULL` en bytea als `\\x...`, net als bij kopiëren.
-- Een naam voor het volgende resultaat kan met `-- @resultaat: Klantenoverzicht` vóór de opdracht.
-- EXPLAIN-uitvoer blijft onderdeel van het overzicht. De aparte Uitvoeringsplan-tab bevat daarnaast het laatst beschikbare plan.
-- Servermeldingen en fouten staan ook onder Meldingen. Query annuleren onderbreekt de lopende opdracht en voert de volgende opdrachten niet uit.
+### Large cells and storage limits
 
-De SQL-splitter herkent gewone en E-strings, dubbele quotes, dollar-quoted bodies, regelcommentaar en genest blokcommentaar. Het is geen volledige PostgreSQL-grammaticaparser; onder andere psql-commando's en COPY-gegevensstromen worden niet ondersteund. Een COPY-gegevensstroom sluit de verbinding met een melding. Gebruik standaard `standard_conforming_strings=on`; de client stopt wanneer dit wordt uitgezet. PostgreSQL-specifieke compound SQL-bodies zonder dollar-quotes zijn nog geen ondersteund scriptscenario.
+Cells show about 200 characters or a short binary preview. Single-click for the
+side viewer; double-click for a dialog. Text wraps, including long words. Text is
+paged in 50,000-character chunks and binary hex in 4 KiB chunks. Copy/save uses the
+stored full value, and saving bytea writes its original bytes.
 
-## Grote celwaarden en limieten
+Stored results are limited to 20,000 rows per statement, 50,000 per script and
+approximately 32 MiB including per-cell overhead. Each cell retains up to 2 MiB of
+UTF-8 input; bytea's encoded input consumes this budget, reducing retained binary
+bytes. The remaining overall budget may lower these limits. Truncation remains
+visible, including in clipboard/export output. Saving a truncated cell asks for
+confirmation that only its available portion will be written.
 
-Een tabelcel toont maximaal ongeveer 200 tekens, of een korte binaire preview. Eén klik toont details rechts; dubbelklikken opent een groter dialoogvenster. Tekst loopt automatisch om binnen de beschikbare breedte, ook bij lange woorden. De viewer toont tekst in pagina's van 50.000 tekens en binaire data als hex in pagina's van 4 KiB. Hexregels blijven ongewijzigd uitgelijnd. De beschikbare volledige waarde kan worden gekopieerd of bewaard; bij bytea bewaart de bestandsactie de oorspronkelijke binaire bytes.
+The client drains/counts remaining rows; limits do not rewrite SQL or automatically
+reduce server work/network traffic. Single-row libpq mode avoids collecting the
+entire result, but one extremely large row may temporarily exceed the storage
+budget. Worker-to-GUI batches use acknowledgement-based backpressure.
 
-Een korte preview verandert de opgeslagen waarde niet. Voor zeer grote resultaten gelden wel afzonderlijke opslaglimieten: 20.000 rijen per opdracht, 50.000 rijen per uitvoering en een opslagbudget van circa 32 MiB inclusief een conservatieve bijdrage per cel. Een cel bewaart maximaal 2 MiB aan UTF-8-invoer; bij bytea is dit de gecodeerde invoer, waardoor minder ruwe bytes overblijven. Het resterende budget kan deze limiet verder verlagen. Ingekorte uitvoer wordt expliciet gemarkeerd, ook bij kopiëren. Bewaren van een ingekorte cel vraagt of alleen het beschikbare deel moet worden bewaard.
+OID values are displayed as values, not assumed to reference PostgreSQL large
+objects. On-demand large-object loading/export via OID remains future work.
 
-De client blijft de overige resultaten verwerken en telt de werkelijk ontvangen rijen. De limiet herschrijft de SQL niet en beperkt serverwerk of netwerkverkeer dus niet automatisch. libpq single-row mode voorkomt verzamelen van het volledige resultaat; één extreem grote rij kan wel tijdelijk meer geheugen gebruiken dan het opslagbudget. De overdracht naar de interface gebruikt één batch tegelijk met ontvangstbevestiging.
+## Database maintenance
 
-OID-waarden worden als waarden getoond. Een OID is niet automatisch een large-objectverwijzing. Het op verzoek inlezen/exporteren van PostgreSQL large objects via OID is nog een aparte vervolgstap; de huidige detailviewer toont de ontvangen tekst- en bytea-waarden.
+The connected server/database context menu provides:
 
-## Afhankelijkheden
+- **Database aanmaken...**: create an empty UTF-8 database from template0, owned by
+  the connected user.
+- **Databasebackup...**: dump the complete database, including data, as a custom
+  PostgreSQL archive or plain SQL. This uses pg_dump directly and is unaffected by
+  query display limits. A database dump does not create server roles.
+- **Database herstellen...**: restore an archive with pg_restore or a SQL file
+  with psql into the explicitly displayed database, preferably empty. Archive
+  restore uses one transaction and stops on errors. Skipping ownership/ACLs is on
+  by default; cleaning existing archive objects is off. Those switches apply only
+  to archives. SQL files define their own SQL/psql commands; standard pg_dump SQL
+  is executed transactionally, but arbitrary scripts can override transactions.
+- **Database verwijderen...**: type the exact database name to confirm. postgres,
+  template0/template1 and the configured maintenance database are protected.
+  External clients are not forcibly disconnected; PostgreSQL may refuse the drop.
 
-- Qt 6.11.1, MSVC 2022 x64, CMake en Ninja op deze machine.
-- Projectlokale PostgreSQL 18.6-5 SDK en runtime uit het officiële EDB-binaire pakket.
-- Qt Network voor asynchroon opzoeken van hostnamen.
-- QXlsx 1.5.1.1 voor Excel-export, via CMake opgehaald met vaste SHA-256 en statisch meegebouwd; de MIT-licentie wordt naast de executable geplaatst. Qt Concurrent voert bestandsexport op de achtergrond uit.
-- QtKeychain 0.17.0, automatisch opgehaald door CMake FetchContent met vastgelegde SHA-256, statisch meegebouwd. De eerste configuratie heeft hiervoor internet nodig; daarna wordt de buildcache gebruikt. De bijbehorende licentie wordt naast de executable geplaatst.
+Server-level actions select a database from the loaded list. The modeless task
+window captures its target independently of later tree selections. **Starten**
+confirms execution; log output and **Annuleren** remain available during work.
+**Verstreken tijd** updates during the task; **Totale duur** remains after success,
+failure or cancellation, including milliseconds. Backup timing includes final file
+publication. The progress bar is indeterminate, with no fabricated percentage/ETA.
+Failed/cancelled backups preserve existing files. CREATE/DROP may already have
+committed when cancellation arrives; inspect the refreshed tree afterward.
 
-De PostgreSQL 17-installatie wordt niet gebruikt door de nieuwe build. Download de projectlokale bestanden met:
+Restore/drop close this application's idle target sessions and metadata connections,
+rolling back open transactions as disclosed by the dialog. Running queries must
+first finish or be cancelled. The target is unavailable for new local connections
+during maintenance. Editors retain their SQL and explicit database targets.
+
+## Server roles and database rights
+
+Choose **Rollen en databaserechten...** from a connected server/database context
+menu. Roles apply to the entire server. Create roles or edit LOGIN, passwords,
+expiry, connection limits, administrative attributes, comments and memberships.
+Existing role names cannot currently be renamed/deleted in this editor. Built-in
+pg_ roles are read-only. New roles default to NOLOGIN without administrator rights.
+Review the SQL preview and select **Toepassen** to apply changes in a private
+transaction, separate from query-tab transactions. Apply/discard one tab's changes
+before switching to the other editable form. Server permissions remain authoritative.
+
+Passwords are not shown in SQL previews or saved settings. libpq prepares a local
+SCRAM-SHA-256 verifier before sending password-change SQL. If changing the password
+of the profile's own user, update that connection profile separately.
+
+The **Databaserechten** tab distinguishes direct CONNECT/CREATE/TEMPORARY grants,
+GRANT OPTION and effective privileges. PUBLIC, memberships or ownership can retain
+effective access after a direct grant is revoked. Changing database ownership is
+an explicit option. This editor does not grant table or schema privileges.
+
+A SQL dump may reference owner/grantee roles without creating them. If restore
+fails because `sparxea`, for example, is absent, choose **Rollen beheren...** in
+the restore dialog, review/create that role, and start a new restore from the
+context menu. An ownership-only role can remain NOLOGIN; authenticating as it
+requires LOGIN and suitable credentials. SQL dumps are not rewritten to remove
+ownership/ACL commands.
+
+## Dependencies and build
+
+Currently validated: Windows, Qt 6.11.1 MSVC 2022 x64, CMake 3.24 or newer and Ninja.
+The standalone build script contains this machine's Qt/Visual Studio paths.
+
+- PostgreSQL 18.6-5 SDK/runtime from the EDB binary distribution, stored locally.
+  The application uses libpq directly, with nonblocking I/O in a worker thread.
+- Qt Network for asynchronous hostname lookup; Qt Concurrent for background export.
+- QtKeychain 0.17.0, statically built with plaintext fallback disabled.
+- Libxlsxwriter 1.2.4 and zlib 1.3.2, statically built. The small `QtXlsxWriter`
+  bridge accepts Qt text rows and widths and safely publishes the workbook.
+  No private Qt module or additional XLSX runtime DLL is required.
+
+CMake FetchContent pins source archives by SHA-256. Initial configuration requires
+network access; subsequent builds reuse cached sources. Licences are deployed
+beside the application. Minizip/tmpfileplus sources bundled with libxlsxwriter are
+covered in its licence notice; optional MD5 image deduplication is disabled.
+
+Fetch the PostgreSQL files, without installing a service or changing PATH:
 
 ```powershell
 py -3 tools\fetch-postgresql.py
 ```
 
-Python is alleen een hulpmiddel voor het ophalen van dependencies; de applicatie start geen Python-proces. De download gebruikt delen van het officiële ZIP-archief en haalt geen pgAdmin-installatie op. Bestanden komen onder `third_party\postgresql18`; versienummer, bron-URL en bestandshashes staan in `manifest.json`. Het downloaden installeert geen service en wijzigt geen systeem-PATH of databases.
+The downloader fetches selected parts of the official archive into
+`third_party/postgresql18`; manifest.json records versions, URLs and hashes.
+It also obtains server/tools used for isolated integration tests. The app itself
+uses client DLLs and PostgreSQL maintenance tools. Python is a download/test tool,
+not an application runtime dependency. QPSQL is available in Qt but is not used;
+it would also require libpq and its runtime DLLs.
 
-De map bevat ook server- en commandlinetools voor geïsoleerde integratietests. De applicatie gebruikt alleen de client-DLL's. De downloadmap en buildbestanden zijn uitgesloten in `.gitignore`.
-
-QPSQL is een bruikbaar alternatief voor Qt SQL-toegang, en is aanwezig in de gebruikte Qt-installatie. De applicatie gebruikt momenteel rechtstreeks libpq, met nonblocking verbindingen in een workerthread. Ook QPSQL vereist libpq en bijbehorende runtime-DLL's.
-
-## Bouwen
-
-Open `CMakeLists.txt` in Qt Creator met de Qt 6.11.1 MSVC 2022 64-bit-kit. Voer na het ophalen van dependencies opnieuw CMake uit. De PostgreSQL 18-root staat in de CMake-instelling `PGADM_POSTGRESQL_ROOT`; standaard is dat de projectlokale map.
-
-Voor een standalone Release-build:
+Open CMakeLists.txt in Qt Creator with the Qt 6.11.1 MSVC 2022 64-bit kit. Configure
+`PGADM_POSTGRESQL_ROOT` to select another PostgreSQL 18 SDK/runtime root.
+For a standalone Release build:
 
 ```powershell
 .\build-release.cmd
 ```
 
-Het script laadt de lokale Visual Studio-omgeving, bouwt met CMake/Ninja en draait windeployqt. CMake kopieert libpq en de bijbehorende DLL's naast de executable, ook bij builds vanuit Qt Creator. De PostgreSQL-tools `pg_dump.exe`, `pg_restore.exe`, `psql.exe`, `createdb.exe` en `dropdb.exe` en hun runtimebestanden, waaronder `liblz4.dll` en `libzstd.dll`, worden meegekopieerd. Houd deze bestanden bij de executable. Een volledige distributie op een schone Windows-machine is nog niet gecontroleerd.
+The script loads Visual Studio, runs CMake/Ninja and windeployqt. CMake deploys
+libpq, its runtime DLLs, pg_dump, pg_restore, psql, createdb and dropdb, including
+lz4/zstd dependencies. Keep the deployed files together. Clean-machine distribution
+has not yet been validated.
 
-De vensteropbouw staat in `pgadmmain.cpp` en `querytab.cpp`. Het oude `.ui`-bestand wordt niet voor de schermindeling gebruikt. `pgsession.cpp` bevat de verbinding en worker; de PGconn verlaat de workerthread niet.
+## Settings and startup measurement
 
-## Instellingen en starten
+Settings use Qt AppConfigLocation for Hans/PgAdmQt, in settings.ini. Profiles do not
+contain passwords. `--settings-file <path>` selects an isolated settings file.
 
-Instellingen staan onder Qt AppConfigLocation voor Hans/PgAdmQt in `settings.ini`. Het profiel bewaart geen wachtwoord. Bij starten worden geen databaseverbindingen geopend en geen queries opnieuw uitgevoerd.
+`--startup-check --startup-report <path>` measures from main() until the first
+event-loop callback after show(), then exits. Create the report directory first.
+It excludes loader time before main() and does not prove that every pixel has
+already been painted. Earlier warm-start measurements are not cold-start
+benchmarks or a complete comparison with pgAdmin.
 
-Gebruik `--settings-file <pad>` voor een apart instellingenbestand. De bestaande `--startup-check --startup-report <pad>`-opties meten van het begin van main() tot de eerste eventloop-callback na show() en sluiten automatisch af. Maak de rapportmap vooraf aan. Dit omvat geen loader-tijd vóór main() en is geen garantie dat alle pixels op dat moment zijn getekend.
+## Testing
 
-## Rollen en databaserechten
-
-Verbind met de server en kies via de rechtermuisknop **Rollen en databaserechten...**.
-Rollen gelden voor de hele server. Je kunt rollen aanmaken en bestaande rollen
-bewerken: LOGIN, wachtwoord, vervaldatum, verbindingslimiet, beheerdersattributen,
-commentaar en lidmaatschappen. Bestaande rolnamen worden hier niet hernoemd.
-Wijzigingen verschijnen eerst als SQL en worden pas met **Toepassen** uitgevoerd.
-Nieuwe rollen blijven standaard NOLOGIN, zonder beheerdersrechten.
-Wachtwoorden verschijnen niet in het SQL-voorbeeld en worden als SCRAM-verifier
-naar PostgreSQL verzonden. Het verbindingsprofiel wordt niet automatisch aangepast
-als je het wachtwoord van diezelfde gebruiker wijzigt.
-
-Het tabblad **Databaserechten** toont directe CONNECT/CREATE/TEMPORARY-grants,
-GRANT OPTION en effectieve rechten. Rechten via PUBLIC of een andere rol kunnen
-blijven bestaan na het intrekken van een directe grant. Database-eigendom wijzigen
-is een aparte keuze. Tabel- en schemarechten vallen buiten dit venster.
-Pas wijzigingen op een tabblad toe voordat je het andere tabblad opent.
-PostgreSQL controleert of je beheergebruiker de gevraagde bewerking mag uitvoeren.
-
-Een SQL-backup van een database bevat vaak eigenaarsnamen en GRANT-opdrachten,
-maar maakt de serverrollen zelf niet aan. Ontbreekt bij herstel bijvoorbeeld
-`sparxea`, open dan **Rollen beheren...** vanuit het herstelvenster, maak die rol
-aan en start het herstel daarna opnieuw vanuit het databasecontextmenu. Als de rol
-alleen eigenaar moet zijn, kan LOGIN uit blijven. Voor werkelijk aanmelden moet
-je LOGIN en een passend wachtwoord instellen. De optie om eigenaars/rechten over
-te slaan geldt uitsluitend voor PostgreSQL-archieven, niet voor SQL-bestanden.
-
-## Testen
-
-Querycategorieën zijn op 9 november 2026 gericht gecontroleerd met
-`tst_browser savedQueriesAndWidths`: geslaagd, inclusief bestaande queries zonder
-categorie, toewijzen via de interface, categorie- en zoekfilters, hernoemen,
-behoud na herstarten, kolombreedtes en ongewijzigde SQL-tekst. De test gebruikt
-een tijdelijke bibliotheek. Rapport: `build/Release/query-categories-check.txt`.
-
-Tijdweergave gecontroleerd op 9 november 2026: alle 36 controles geslaagd,
-zonder fouten of overgeslagen tests. Het bestaande backup-/restorevensterscenario
-controleert nu ook de beginwaarde, lopende tijdweergave en totale duur na afloop.
-Rapporten: `build/Release/integration-ad1189b46c0b4a719243ec36d2fc94f9/`.
-De tijdelijke PostgreSQL 18-server is gestopt.
-
-Rollenbeheer gecontroleerd op 9 november 2026: 36 geslaagde controles (11
-verbinding, 11 query/model/view/export, 14 kluis/browser/taken), geen fouten of
-overgeslagen tests. Nieuwe controles dekken quoten en alleen gewijzigde SQL,
-de echte contextmenuactie, een SQL-restore met ontbrekende eigenaarsrol gevolgd
-door succesvol herstel na rolcreatie, NOLOGIN als standaard, rollback van
-gedeeltelijke rolcreatie bij een verdwenen lidmaatschapsdoel, LOGIN met een lokaal
-voorbereid SCRAM-wachtwoord, weigeren van een verkeerd wachtwoord, lidmaatschap,
-directe databasegrants met GRANT OPTION en intrekken daarvan naast PUBLIC-rechten.
-Ook het terugdraaien van formulierinvoer en weigeren van rolcreatie door een
-beperkte gebruiker zijn getest. Rapporten:
-`build/Release/integration-f16ecd2c789c4e49a0df9a0636a39987/`.
-De tijdelijke PostgreSQL 18-server is gestopt; bestaande databases zijn niet gebruikt.
-
-Backup/restore en create/drop: 34 geslaagde controles (11 verbinding, 11 query/model/view/export, 12 kluis/browser/taken), geen fouten of overgeslagen tests. De roundtrip controleert echte backups naar andere databases, ook 25.001 rijen buiten de queryweergavelimiet, grote getallen, Unicode/regeleinden, bytea, sleutels/indexen, views en sequencestatus. Falen/annuleren behoudt een bestaand backupbestand; een fout SQL-herstel rolt terug. De echte contextmenu's controleren create buiten een open querytransactie, een vastgezette restoretarget, sluiten van eigen sessies, boomverversing en naambevestiging bij drop. Rapporten: `build/Release/integration-6cc635213bfb4fd78b4f315dc8cd7a99/`. De tijdelijke PostgreSQL-server is gestopt. De lege-bestandsnaamcontrole is na afloop nog afzonderlijk offline getest.
-
-Gecontroleerd op 8 november 2026 na documentatie/refactor en objectinspectie: 31 geslaagde controles (11 verbinding, 11 query/model/view/export, 9 kluis/browser), geen fouten of overgeslagen tests. De nieuwe tests controleren profielannulering zonder wijzigingen, gescheiden wachtwoordvelden, de browseractie voor eigenschappen, echte cataloguswaarden en pg_dump-definities met quotes/wildcards, selectievolgorde, beperkte rechten, SCRAM-login van pg_dump, verdwenen objecten en een gelockte tabel zonder geblokkeerde interface. Rapporten: `build/Release/integration-688abdf9879244268313d89e651692fa/`. De tijdelijke server is gestopt.
-
-Gecontroleerd op 8 november 2026: 29 geslaagde controles (11 verbinding, 11 query/model/view/export, 7 kluis/browser), geen fouten of overgeslagen tests. Inclusief CSV-quoting en Unicode, XLSX-teruglezen zonder verlies van voorloopnullen/grote getallen/literale SQL-tekst, behoud van een bestaand bestand bij een te lange Excel-cel, daadwerkelijke exportknoppen en tekst/HTML op het klembord. Rapporten: `build/Release/integration-fb371492613e48818fecf50aaaf85e06/`. De tijdelijke PostgreSQL-server is gestopt.
+Validated on 9 November 2026 after the libxlsxwriter migration: 36 checks passed
+(11 connection, 11 query/export, 14 browser/maintenance), with no failures or
+skipped tests. Reports: [integration-fdb538041da44d699cefc7173770300c](build/Release/integration-fdb538041da44d699cefc7173770300c/).
+The disposable PostgreSQL server was stopped. The executable dependency list
+confirms that neither libxlsxwriter nor zlib requires an extra runtime DLL.
 
 ```powershell
 .\build-release.cmd -DPGADM_BUILD_TESTS=ON
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-integration.ps1
 ```
 
-De ExecutionPolicy-optie geldt alleen voor dat testproces. Het script maakt een aparte PostgreSQL 18-cluster met een vrije loopbackpoort, maakt een tijdelijke testrol aan en stopt de server in een finally-blok. Bestaande databases en services worden niet aangepast. Testdata en het rapport blijven in een unieke `build\Release\integration-*`-map staan.
+Test builds require Python 3 for independent XLSX inspection using only zipfile,
+ElementTree and JSON from its standard library. CMake locates the interpreter.
+The application itself never needs Python to export XLSX.
 
-De verbindingstests controleren verbinding weigeren, timeout met een responsieve eventloop, annulering, verbinden/herverbinden, ontbrekend en verkeerd wachtwoord, SCRAM-authenticatie, ontbrekende database, hostname-resolutie, vereiste SSL op een server zonder TLS en onverwacht verbreken. De querytests controleren scriptopsplitsing (ook het aangeleverde voorbeeld met elf opdrachten), native tabelweergave en clipboardtekst, grote celpreviews, meerdere queryresultaten en EXPLAIN-plannen, servermeldingen, fouten en rollback, annulering met hergebruik van de verbinding en opslaglimieten. Het voorbeeldscript zelf wordt niet op een database uitgevoerd. Zonder PGADM_TEST_PORT worden echte databasetests overgeslagen; het script stelt die variabele zelf in.
+The integration script starts a disposable PostgreSQL 18 cluster on a free loopback
+port and stops it in finally. Existing databases/services are not used. Unique
+vault entries isolate credential tests and are removed afterward. Reports and
+cluster artefacts remain under `build/Release/integration-*`. The offscreen Qt
+platform plugin is required and checked before tests start. Windows font/toolchain
+paths are explicit current test assumptions.
 
-De browsertests controleren QtKeychain opslaan/lezen/overschrijven/verwijderen met uitsluitend unieke testvermeldingen, zonder eigen gebruikerswachtwoorden te lezen. Een hoofdvenster met een apart testinstellingenbestand verbindt met een opgeslagen SCRAM-wachtwoord, laadt de boom tot kolommen en opent via dubbelklik een query op een andere database. SELECT current_database() controleert het daadwerkelijke doel. Een schema met een apostrof in de naam test correcte SQL-quoting. De test controleert ook dat de kladconfiguratie geen wachtwoord bevat en dat metadataverzoeken doorgaan terwijl een gebruikersquery loopt. De testvermeldingen worden opgeruimd.
+Coverage includes connection/authentication errors, cancellation, responsive I/O,
+SQL splitting, transactions, multiple results, result limits, cell viewers,
+clipboard, CSV/XLSX export, saved-query categories/widths, browser context actions,
+metadata independence, definition dumps, backup/restore roundtrips, database tasks,
+role changes, SCRAM passwords, direct database grants and rollback on errors.
+XLSX checks inspect actual ZIP/XML output independently of the writer, including
+Unicode paths, literal text/formulas, large numbers, headers and column widths.
 
-Gecontroleerd op 5 november 2026: Release-build met PostgreSQL 18.6, 11 geslaagde verbindingscontroles, 8 geslaagde query/model/view-controles en 5 geslaagde kluis/browsercontroles (inclusief initialisatie en opruimen), geen fouten of overgeslagen tests. De rapporten staan in `build/Release/integration-a62c2e0e6cf14cbe84706f5c1ea0b61b/`; de uiteindelijke opgeslagen-wachtwoordroute, databasekeuze en serverdisconnect staan in `browser-final.txt`. De tijdelijke server is gestopt. Een warme opstartcontrole bereikte de eerste eventloop-callback na 129 ms vanaf main(), exclusief loader-tijd. GUI-tests draaien met de meegeleverde offscreen-platformplugin; een ontbrekende testplugin wordt vóór starten gemeld. De interactieve wachtwoorddialoog is nog niet met een echte gebruikersverbinding doorlopen.
+Without PGADM_TEST_PORT, database-dependent tests are skipped; the integration
+script supplies it automatically. The supplied performance-example SQL is parsed
+as a fixture, not run against a user's database.
 
-Gecontroleerd op 6 november 2026: 25 geslaagde controles (11 verbinding, 8 query/model/view, 6 kluis/browser), geen fouten of overgeslagen tests. Het extra scenario start als postgres op postgres en opent via het echte contextmenu een querytab op een tijdelijke database met de naam lts_ontwikkel. current_user en current_database() bevestigen het doel. Ook een tweede tab op dezelfde database, Ctrl+N, het behoud van de onderhoudsdatabase en geen terugval naar postgres na verbreken zijn gecontroleerd. Rapporten: `build/Release/integration-8748080f48884ca482262eee74c7dcad/`. Dit controleert de programmaroute op een aparte testserver, niet de toegangsinstellingen van een bestaande gebruikersserver.
+## Remaining work
+
+Object create/alter/drop editors beyond database operations, table/schema
+privilege editors, safe table-data editing, VACUUM/ANALYZE/REINDEX, full export
+beyond retained result limits, query completion/history, session-per-tab isolation,
+a JSON plan viewer, SSH/certificate UI and clean-machine packaging remain future
+work. Monitoring, replication, ERD, debugger and schema diff are outside the
+current requested scope.

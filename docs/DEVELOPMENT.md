@@ -84,10 +84,24 @@ with explicit string cells to preserve exact values and prevent formula guessing
 Overlong Excel cells fail rather than being silently shortened.
 
 `QueryTab::exportResults` sends an implicitly shared result snapshot to
-`QtConcurrent`. The worker never reads a widget or mutable model. XLSX first
-writes to `QTemporaryFile`, because QXlsx closes its output device; the completed
-bytes are then copied through `QSaveFile`. Passing QSaveFile directly to QXlsx
-is invalid. Clipboard output contains both TSV text and escaped HTML.
+`QtConcurrent`. The worker never reads a widget or mutable model.
+`QtXlsxWriter` is the small Qt/libxlsxwriter bridge: sequential QStringList rows,
+two fixed formats, pixel column widths and save. It owns the C handles, converts
+UTF-8, validates Excel limits and uses libxlsxwriter's constant-memory mode. It
+does not expose a spreadsheet object model or native handles to callers. A staged
+QTemporaryDir gives libxlsxwriter its own output path, avoiding Windows file-handle
+sharing conflicts. After workbook_close, QFile reads the staged workbook and
+QSaveFile publishes its bytes.
+Errors/abandoned exports preserve the destination. Embedded NUL characters are
+rejected instead of silently cutting off C strings; CSV remains available.
+Clipboard output contains both TSV text and escaped HTML.
+
+CMake builds pinned libxlsxwriter and zlib sources statically. No Qt private
+module is required. Tests inspect ZIP/XML with a Python-standard-library script,
+independently of the writer. Python is required only with PGADM_BUILD_TESTS=ON.
+The FetchContent patch removes libxlsxwriter's explicit MSVC /Fd flags so CMake
+alone controls per-target PDB paths. It preserves debug/optimisation options and
+avoids D9025 warnings without disabling diagnostics.
 
 ## Catalog and object inspection
 

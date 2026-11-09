@@ -8,8 +8,8 @@ namespace ResultExporter {
 // post: A successful export atomically replaces the target. Failure preserves it.
 // result: Empty QString on success, otherwise an actionable error description.
 // internals: The private visit() traverses QueryResult sections. csv() writes quoted
-//            UTF-8; xlsx() uses string cells and stages QXlsx output in a temporary
-//            file before committing with QSaveFile. No query is rerun by export.
+//            UTF-8; xlsx() passes rows to QtXlsxWriter, which handles libxlsxwriter
+//            and atomically publishes the result. No query is rerun by export.
 QString csv(const QString &path, const QVector<QueryResult> &results);
 QString xlsx(const QString &path, const QVector<QueryResult> &results, const QVector<int> &widths);
 // Return an escaped table for clipboard pasting. Includes headings/status and

@@ -317,7 +317,7 @@ void QueryTab::exportResults(bool excel)
     });
     // The worker owns an implicitly shared snapshot and never accesses GUI objects.
     watcher->setFuture(QtConcurrent::run([filename, excel, results = model->results(), widths = widths] {
-// Preserve exact values as string cells, reject Excel limits, and stage QXlsx output before atomic replacement.
+        // Export an immutable snapshot; the XLSX wrapper handles safe file publication.
         return excel ? ResultExporter::xlsx(filename, results, widths) : ResultExporter::csv(filename, results);
     }));
 }
