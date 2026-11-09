@@ -1,0 +1,210 @@
+# Implementation guide
+
+This project follows Hans's preference for direct, procedural code, adapted to
+Qt's widget/model and asynchronous APIs. Stateless operations use functions;
+classes own actual UI state, connection state or resource lifetimes. Do not add
+an application framework or general repository/service layer around Qt.
+
+## Startup and connection ownership
+
+`main` constructs `PgAdmMain`. The main window reads local `QSettings`, creates
+widgets and lists saved query filenames. It does not connect to PostgreSQL,
+read the password vault or execute previous SQL during startup.
+
+`ProfileDialog::edit` edits a local form. On cancellation it changes nothing;
+on acceptance it returns profile fields and a separate password. `PgAdmMain`
+persists the profile, calls `PasswordStore` when requested and manages live
+sessions. `PasswordStore` delegates to QtKeychain with insecure fallback disabled.
+Its key includes server ID, host, port and user, but not the database. SQL and
+passwords must not be included in diagnostic connection strings or log messages.
+
+`PgSession` is the GUI-thread facade. It owns a worker thread and forwards
+commands to `PgConnection`. The worker owns the `PGconn`, DNS lookup, socket
+notifier, connection timer and asynchronous cancellation state. Connection
+completion emits information only after libpq has established the connection.
+Shutdown stops the worker event loop and waits for its resource cleanup.
+
+Query tabs currently share one session per server/database. They therefore also
+share transactions. Catalog metadata uses separate sessions, so a user query or
+transaction does not occupy the catalog queue. Do not silently change a tab's
+database when its connection disappears.
+
+## SQL execution and result storage
+
+`QueryTab::sqlToExecute` returns the selection or entire editor text.
+`PgAdmMain::runQuery` selects the tab's session and calls `startExecution` before
+dispatching SQL. `SqlScript::split` recognises strings, quoted identifiers,
+dollar bodies and nested comments; it is not a complete PostgreSQL parser.
+The worker executes statements in order and stops on the first error or cancel.
+Autocommit remains PostgreSQL's default unless SQL explicitly opens a transaction.
+
+`PgConnection::readResults` drains libpq single rows into batches of at most
+128 stored rows. `publish` waits for `PgSession` to acknowledge delivery before
+reading more, bounding the queued UI work. Row, cell and byte limits bound stored
+results. Additional server rows are drained and counted, not silently treated as
+stored rows. A single incoming libpq row may still temporarily exceed that budget.
+COPY streams are rejected by closing the connection to restore protocol state.
+
+`ResultModel` stores `QueryResult` sections and a flat vector of row references.
+It exposes headings, column names, values and status lines to one `QTableView`;
+it creates no widgets per row. With intermediate results off, it retains only
+the latest section. `ResultCell::preview` is deliberately short; `fullText`
+preserves the stored value, including NULL and bytea distinctions in the struct.
+
+`CellViewer` copies the selected cell and pages through its stored text or bytes.
+Text wraps; binary hex rows keep their alignment. Copy/save never reconstruct
+the value from the short table preview. Truncated values remain marked.
+
+## Saved queries, widths and export
+
+`QueryLibrary` maps names to percent-encoded UTF-8 SQL filenames. Listing reads
+names only. `QSaveFile` replaces a file only after a successful write/commit.
+`QueryLibrary` stores optional name-to-category assignments in categories.ini
+through QSettings. Existing scripts without metadata are uncategorised. Categories
+list only names assigned to surviving files, with case-insensitive spelling reuse.
+Assignments leave SQL paths/text unchanged; query rename carries its category and
+deletion removes its assignment. A metadata write failure during rename rolls the
+SQL filename back when possible and reports a filesystem error.
+`SavedQueriesPanel` combines a category filter (all/uncategorised/named) with name
+search, and assigns categories through an editable picker. A new query inherits
+the active named category; overwriting a query preserves its own category.
+`PgAdmMain` owns
+editor loading and dirty-state decisions. Reopening a named query focuses its
+existing tab so unsaved edits are not discarded.
+
+Column widths are stored by column position. A saved query/file uses a hashed
+absolute-path settings key; unsaved tabs use the general default. Renaming a
+library entry migrates its layout key; deleting it detaches open editors and
+marks them modified. SQL text itself contains no layout metadata.
+
+`ResultExporter` traverses the stored sections for CSV, XLSX and HTML. CSV is
+UTF-8 with BOM, commas, quoted fields and doubled quotes. One section is a plain
+table; multiple sections retain headings/status. XLSX is one overview sheet,
+with explicit string cells to preserve exact values and prevent formula guessing.
+Overlong Excel cells fail rather than being silently shortened.
+
+`QueryTab::exportResults` sends an implicitly shared result snapshot to
+`QtConcurrent`. The worker never reads a widget or mutable model. XLSX first
+writes to `QTemporaryFile`, because QXlsx closes its output device; the completed
+bytes are then copied through `QSaveFile`. Passing QSaveFile directly to QXlsx
+is invalid. Clipboard output contains both TSV text and escaped HTML.
+
+## Catalog and object inspection
+
+`CatalogTree` inherits profile/database/schema/relation context down its nodes.
+Expanding a node requests only that branch from `CatalogService`. The service
+keeps at most eight metadata connections and serialises requests per database.
+Tree requests retain persistent model indexes; replies for deleted nodes are ignored.
+Property queries use the same metadata queue, not a second connection pool.
+
+`ObjectDetails::load` invalidates the previous selection and records a new
+metadata request ID. Only a matching reply may fill the property table. The
+detail pane loads only while visible. Database/schema properties are available;
+relation and column properties include type, owner/default/identity information
+where applicable. Estimated row counts are statistics, not exact counts.
+
+Opening the definition tab starts a separate `pg_dump --schema-only` process for
+one exactly quoted relation pattern. It includes no data, owner or privilege SQL.
+The raw script is intended for psql and may contain psql directives; the query
+editor does not support those directives. Referenced types, schemas and other
+dependencies are not guaranteed to be included by a selective dump.
+
+The child receives connection settings through its private process environment;
+the password is never saved to a file or passed on the command line. It may use
+the normal libpq password file when no in-memory password is present. A two-second
+lock wait and 30-second overall timer limit waits; output is bounded at 8 MiB.
+Changing selection or hiding the pane kills obsolete dumps. Errors and stderr
+warnings are shown explicitly. Nothing in this view executes the displayed DDL.
+
+## Database maintenance tasks
+
+`PgAdmMain::openDatabaseTask` captures a profile and database from the actual
+context menu. Server-level tasks select from the already loaded database list.
+`DatabaseTaskDialog` is modeless: changing the tree selection cannot change its
+captured target, and Start reviews that target before execution. A changed profile
+invalidates the old task form. Drop requires the exact name, with standard system
+and configured maintenance databases protected by `DatabaseJob::dropError`.
+
+Before restore/drop, `releaseDatabase` refuses busy user queries, marks the target
+node unavailable, closes only its metadata queue and deletes matching idle user
+sessions. This rolls back their open transactions, as disclosed in the task form.
+Query editor text and explicit target IDs survive. `CatalogTree::setDatabaseBusy`
+also applies to nodes recreated during a refresh. `connectDatabase` rejects new
+connections to a locked target. External clients are never terminated with FORCE.
+
+`DatabaseJob` owns one actual maintenance process. It uses pg_dump, pg_restore,
+psql, createdb or dropdb rather than sharing a user's query session. `PgTools`
+supplies executable paths, private credential environments and escaped libpq
+dbname arguments; this prevents names containing '=' from becoming connection
+parameters. No shell or password command-line argument is involved.
+
+Backup output goes to a private temporary file beside the chosen destination.
+Only a successful dump starts `commitBackup`, which copies through QSaveFile on
+QtConcurrent. An atomic flag cancels that copy without touching the old file.
+The destructor waits for an active copy before deleting staging. Data never
+travels through ResultModel, so query display limits do not apply to backups.
+
+Restore detects archive headers rather than trusting a suffix. Custom/tar archives
+use pg_restore with --single-transaction/--exit-on-error; clean and owner/ACL
+options are explicit. Plain SQL uses psql without its rc file, with ON_ERROR_STOP
+and --single-transaction. Arbitrary SQL/psql scripts may contain their own COMMIT
+or connection commands; the transaction guarantee is for standard pg_dump output.
+Cluster-wide roles are outside the scope of a single-database dump.
+
+The task dialog uses QElapsedTimer for monotonic elapsed wall time, refreshed by
+a 250 ms QTimer. Timing starts immediately before launching DatabaseJob and stops
+on its finished signal, including the final backup file commit and cancellation.
+The final duration remains visible for success and failure. It does not estimate
+remaining time or a percentage of completed work.
+
+Log text is decoded incrementally and bounded by line and character counts in the
+dialog. Progress is indeterminate, never a fabricated percentage. Cancelling kills
+the child or marks the background file copy for cancellation. CREATE/DROP may
+already have committed, so every completion, including cancellation/failure,
+refreshes the captured server's database list. Obsolete list replies are invalidated.
+Task windows remain alive until the process/copy actually finishes; main-window
+close is refused while a maintenance job is active.
+
+## Server roles and database privileges
+
+`PgAdmMain::openRoleManager` captures a server profile from the server/database
+context menu. `RoleManager` owns a private PgSession for catalog reads and write
+transactions; role changes never commit a query tab's transaction. Public
+pg_roles metadata and membership names populate a baseline. `RoleSql` emits only
+changed attributes and memberships, preserving options on unchanged memberships.
+New roles use PostgreSQL's NOLOGIN defaults. Reserved pg_ roles are read-only.
+
+Database ACL reads separate direct grants/grant options from effective privileges
+obtained through PUBLIC, ownership or memberships. Applying changes only adjusts
+direct CONNECT/CREATE/TEMPORARY grants, plus an explicitly selected owner change.
+This does not grant privileges on tables or schemas. Switching editable tabs is
+blocked while changes need applying/discarding. List/database changes and close
+resolve unsaved forms; writes/rollback cannot be interrupted by closing.
+
+Password input is transient and omitted from previews/settings/catalog reads.
+PgSession::executeRoleChange queues role statements and the secret to its worker,
+which prepares an explicit SCRAM-SHA-256 verifier with PQencryptPasswordConn before
+sending SQL. The temporary UTF-8 password buffer is overwritten. This avoids
+plaintext passwords in server statement logs; verifier handling still belongs to
+the private role connection. BEGIN/COMMIT groups attributes, memberships and
+password changes. A failed statement triggers an explicit ROLLBACK before editing
+resumes. Server permissions remain authoritative.
+
+The restore dialog's Roles button opens the same manager after a failed SQL
+restore. A role name extracted from log text only prepopulates a form; it never
+executes DDL. SQL dumps are not rewritten or stripped of ownership/ACL statements.
+Missing roles must be reviewed/created before starting a fresh restore. Profiles
+cannot be edited while their role window is open.
+
+## Documentation and validation
+
+Header contracts describe public behaviour; implementation comments explain
+nontrivial transitions and ownership. Avoid repeating the function name as prose.
+Keep multiple statements on separate lines when that makes control flow clearer.
+
+The current validated platform is Windows with Qt 6/MSVC and PostgreSQL 18.
+`tests/run-integration.ps1` starts a disposable cluster on loopback, sets test
+environment variables, and stops the server in `finally`. Unique vault keys
+isolate credential tests. Test reports remain under the explicit build directory.
+Windows fonts and local toolchain paths are current test/build assumptions, not
+evidence of portability. A clean-machine distribution still needs validation.
