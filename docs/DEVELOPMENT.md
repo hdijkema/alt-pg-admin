@@ -57,6 +57,13 @@ the value from the short table preview. Truncated values remain marked.
 
 ## Saved queries, widths and export
 
+The main toolbar reuses its existing QActions with 24-pixel Lucide SVG icons from
+icons.qrc. Tool buttons show icons; QAction text continues to supply tooltips,
+accessible names and menu labels. Native Qt rendering supplies disabled states.
+Eight local assets and their upstream ISC/MIT licence are bundled; no icon
+framework or runtime network request is introduced. Deployment needs Qt's SVG
+icon-engine plugin, already included by windeployqt.
+
 `QueryLibrary` maps names to percent-encoded UTF-8 SQL filenames. Listing reads
 names only. `QSaveFile` replaces a file only after a successful write/commit.
 `QueryLibrary` stores optional name-to-category assignments in categories.ini
@@ -99,9 +106,9 @@ Clipboard output contains both TSV text and escaped HTML.
 CMake builds pinned libxlsxwriter and zlib sources statically. No Qt private
 module is required. Tests inspect ZIP/XML with a Python-standard-library script,
 independently of the writer. Python is required only with PGADM_BUILD_TESTS=ON.
-The FetchContent patch removes libxlsxwriter's explicit MSVC /Fd flags so CMake
-alone controls per-target PDB paths. It preserves debug/optimisation options and
-avoids D9025 warnings without disabling diagnostics.
+Use libxlsxwriter's upstream build configuration without local source patches.
+On MSVC, its PDB path and CMake's generated /Fd option can produce D9025 warnings.
+These do not prevent compilation; no custom workaround is maintained for them.
 
 ## Catalog and object inspection
 

@@ -24,6 +24,7 @@
 #include <QFormLayout>
 #include <QLabel>
 #include <QInputDialog>
+#include <QIcon>
 #include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -250,6 +251,17 @@ PgAdmMain::PgAdmMain(QWidget *parent, const QString &settingsPath)
     });
     auto *toolbar = addToolBar(tr("Werkbalk"));
     toolbar->setObjectName("mainToolbar");
+    toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    toolbar->setIconSize(QSize(24, 24));
+    toolbar->setStyleSheet("QToolBar { spacing: 4px; padding: 4px; } QToolButton { padding: 5px; }");
+    newAction->setIcon(QIcon(":/icons/file-plus-2.svg"));
+    openAction->setIcon(QIcon(":/icons/folder-open.svg"));
+    saveAction->setIcon(QIcon(":/icons/save.svg"));
+    profileAction->setIcon(QIcon(":/icons/server-cog.svg"));
+    connectAction->setIcon(QIcon(":/icons/plug-zap.svg"));
+    disconnectAction->setIcon(QIcon(":/icons/unplug.svg"));
+    runAction->setIcon(QIcon(":/icons/play.svg"));
+    stopAction->setIcon(QIcon(":/icons/square.svg"));
     toolbar->addAction(newAction);
     toolbar->addAction(openAction);
     toolbar->addAction(saveAction);

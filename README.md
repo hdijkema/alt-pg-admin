@@ -102,6 +102,9 @@ errors are displayed. The lock timeout is two seconds; the overall timeout is
   nested block comments and PostgreSQL dollar-quoted bodies.
 - Unsaved changes are marked and checked before closing or replacing a document.
 - The editor/result split and dock positions are adjustable and persisted.
+- The compact toolbar uses embedded Lucide SVG icons. Hover for action names and
+  shortcuts; menu labels remain available. The ISC/MIT notices are included in
+  assets/icons/LICENSE.txt and deployed as Lucide-LICENSE.txt.
 
 Script statements run separately, in order, stopping at the first error. Without
 explicit BEGIN/COMMIT, each successful statement commits separately. Completion
@@ -337,9 +340,19 @@ as a fixture, not run against a user's database.
 
 ## Remaining work
 
-Object create/alter/drop editors beyond database operations, table/schema
-privilege editors, safe table-data editing, VACUUM/ANALYZE/REINDEX, full export
-beyond retained result limits, query completion/history, session-per-tab isolation,
-a JSON plan viewer, SSH/certificate UI and clean-machine packaging remain future
-work. Monitoring, replication, ERD, debugger and schema diff are outside the
-current requested scope.
+The agreed priorities are maintenance (VACUUM/ANALYZE/REINDEX), independent query-tab
+sessions/transactions, full result export beyond display retention limits, and
+editor comfort (search/replace, history, tab restoration and completion).
+Windows/macOS installers and Linux Flatpak builds follow, with GitHub Actions
+proposed for separate platform builds/tests and packaging. Flatpak targets Debian,
+Ubuntu and Linux Mint with Flatpak configured. macOS/Linux are not yet built or validated; the
+current dependency downloader and integration scripts are Windows-specific.
+Linux packaging must validate sandbox networking, credential storage and file
+portals, and include PostgreSQL client/maintenance tools. Flathub publication is
+a separate release step after installable CI artefacts have been tested.
+
+Graphical object create/alter/drop editors are deferred because SQL covers the
+current need. Table-data editing and extended object-privilege editors are not
+immediate priorities. JSON plans, OID large objects and SSH/certificate UI are
+optional future work. Monitoring, replication, ERD, debugger and schema diff remain
+outside the requested scope. See the implementation plan for current ordering.

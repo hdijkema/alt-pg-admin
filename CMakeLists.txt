@@ -53,8 +53,6 @@ set(USE_SYSTEM_MINIZIP OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(libxlsxwriter
     URL https://github.com/jmcnamara/libxlsxwriter/archive/refs/tags/v1.2.4.tar.gz
     URL_HASH SHA256=e0db59fc248a5ffa465a05ea83a9d466d4bca0e53ab42771515d4ebb467a41c1
-    PATCH_COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=<SOURCE_DIR>
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch-libxlsxwriter.cmake
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(libxlsxwriter)
 add_library(qtxlsxwriter STATIC qtxlsxwriter.cpp qtxlsxwriter.h)
@@ -64,6 +62,7 @@ if(MSVC)
 endif()
 
 set(PROJECT_SOURCES
+        icons.qrc
         main.cpp
         pgadmmain.cpp
         pgadmmain.h
@@ -142,6 +141,8 @@ add_custom_command(TARGET pgadmin_qt POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy
     "${zlib_SOURCE_DIR}/LICENSE" "$<TARGET_FILE_DIR:pgadmin_qt>/zlib-LICENSE.txt")
 add_custom_command(TARGET pgadmin_qt POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
     "${qtkeychain_SOURCE_DIR}/COPYING" "$<TARGET_FILE_DIR:pgadmin_qt>/QtKeychain-COPYING.txt")
+add_custom_command(TARGET pgadmin_qt POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/LICENSE.txt" "$<TARGET_FILE_DIR:pgadmin_qt>/Lucide-LICENSE.txt")
 # Keep runtime dependencies next to both Qt Creator and standalone builds.
 if(WIN32)
     get_filename_component(POSTGRESQL_ROOT "${PostgreSQL_INCLUDE_DIR}" DIRECTORY)
