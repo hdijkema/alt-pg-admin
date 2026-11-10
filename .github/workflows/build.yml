@@ -75,16 +75,21 @@ jobs:
         env:
           PGADM_RELEASE_VERSION: ${{ needs.version.outputs.version }}
         run: build-release.cmd -DPGADM_BUILD_TESTS=OFF "-DPGADM_RELEASE_VERSION=%PGADM_RELEASE_VERSION%"
-      - name: Package portable ZIP
+      - name: Install Inno Setup compiler
+        shell: pwsh
+        run: ./tools/install-inno-setup.ps1
+      - name: Package portable ZIP and installer
         shell: pwsh
         env:
           PGADM_RELEASE_VERSION: ${{ needs.version.outputs.version }}
-        run: ./tools/package-windows.ps1 -QtRoot $env:PGADM_QT_ROOT -Version $env:PGADM_RELEASE_VERSION
+        run: ./tools/package-windows.ps1 -QtRoot $env:PGADM_QT_ROOT -Version $env:PGADM_RELEASE_VERSION -InnoCompiler ./build/tools/inno-setup/ISCC.exe -TestInstaller
       - name: Upload portable build
         uses: actions/upload-artifact@v6
         with:
           name: alt-pg-admin-windows-x64
-          path: dist/${{ needs.version.outputs.archive }}
+          path: |
+            dist/${{ needs.version.outputs.archive }}
+            dist/*-windows-x64-setup.exe
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -93,7 +98,11 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: windows-packaging-report
-          path: build/Release/packaging-*/startup.txt
+          path: |
+            build/Release/packaging-*/startup.txt
+            build/Release/packaging-*/installer-build.txt
+            build/Release/installer-test-*/*.log
+            build/Release/installer-test-*/startup.txt
           if-no-files-found: ignore
           retention-days: 14
 

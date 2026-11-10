@@ -260,6 +260,15 @@ set_target_properties(pgadmin_qt PROPERTIES
 )
 
 include(GNUInstallDirs)
+if(WIN32)
+    enable_language(RC)
+    configure_file(assets/app-icon.rc.in "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc" @ONLY)
+    target_sources(pgadmin_qt PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc")
+elseif(APPLE)
+    target_sources(pgadmin_qt PRIVATE assets/icons/alt-pg-admin.icns)
+    set_source_files_properties(assets/icons/alt-pg-admin.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    set_target_properties(pgadmin_qt PROPERTIES MACOSX_BUNDLE_ICON_FILE alt-pg-admin.icns)
+endif()
 install(TARGETS pgadmin_qt
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

@@ -14,6 +14,10 @@ Application sources are grouped under `src` by responsibility. See
 [source layout](docs/SOURCE-LAYOUT.md) for the folders, file assignments and include
 conventions. Open the root `CMakeLists.txt` in Qt Creator as before.
 
+The application icon comes from `assets/icons/alt-pg-admin.svg`, with native ICO
+and ICNS derivatives for Windows/macOS packaging. See [icon assets](assets/icons/README.md)
+for regeneration instructions. Inkscape is not required for ordinary builds.
+
 ## Quick start
 
 1. Run `build/Release/pgadmin_qt.exe`, or build/run through Qt Creator.
@@ -508,17 +512,18 @@ Packaging checks startup with isolated settings. The shared build and ZIP packag
 scripts have been checked locally; workflow updates still need a GitHub run.
 See [GitHub Actions builds](docs/CI.md) for commands, artifacts and limits.
 Pushing a tag such as `v0.2.0`, or supplying a version in a manual workflow run,
-publishes a GitHub Release with the versioned Windows ZIP, Debian 12/13 packages
+publishes a GitHub Release with the versioned Windows ZIP and Inno Setup installer, Debian 12/13 packages
 and Flatpak bundle after all platform builds and package checks succeed. The version also appears in the application. Branch/PR builds only
 produce Actions artifacts. Publication still needs validation on GitHub.
-The Inno Setup installer and macOS app bundle/DMG remain to be implemented.
+The Windows installer is configured and has local install/reinstall/uninstall
+validation; the macOS app bundle/DMG remains to be implemented.
 Linux packaging is configured in `.github/workflows/linux.yml`: native Debian 12/13
 packages and a Flatpak bundle. The Debian 12 build and package have been checked
 locally; Debian 13 and the full Flatpak build still need their first hosted run.
 The existing PostgreSQL downloader and database integration scripts remain Windows-specific.
 The Windows ZIP contains deployed Qt/PostgreSQL tools and app-local MSVC runtime
 DLLs, and passes a local startup smoke check. Clean-machine operation still needs
-validation. The future installer will use the same staging directory. Settings and credentials retain their existing
+validation. The installer uses the same staging directory. Settings and credentials retain their existing
 per-user locations; a separate portable-settings mode is not currently planned.
 The Flatpak includes PostgreSQL client/maintenance tools and grants networking,
 host-file and local-socket access for administration. Desktop credential storage

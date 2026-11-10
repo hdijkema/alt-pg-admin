@@ -14,7 +14,7 @@ It produces three downloadable Actions artifacts, retained for 14 days:
 The build jobs have read-only repository permissions and do not publish to a
 package repository or Flathub. For a numeric version tag such as `v0.2.0`, or a
 manual main workflow run with version `0.2.0`, all platforms use that same version
-and the main release job attaches the Windows ZIP, both `.deb` files and Flatpak
+and the main release job attaches the Windows ZIP/installer, both `.deb` files and Flatpak
 to one GitHub Release. The release job waits for every platform build to succeed.
 Ordinary branches/PRs and direct manual Linux-only runs produce Actions artifacts.
 An empty version uses the CMake development version.
@@ -64,6 +64,15 @@ and libxlsxwriter use the same versions and hashes as the normal CMake build.
 version without changing the checked-in manifest. All sources are downloaded before compilation; FetchContent is given local source
 directories, so compilation does not require network access in the build sandbox.
 
+The hosted runner configures Flathub system-wide at
+`https://dl.flathub.org/repo/flathub.flatpakrepo` and explicitly installs both KDE
+6.10 SDK and Platform system-wide before invoking the builder action. The bundle
+is also installed system-wide for its CI checks. This matches flatpak-builder's
+default dependency-installation scope; a user-only remote cannot satisfy its
+system installation lookup. The SDK ref is checked before the large SDK download.
+The action's upstream Node `punycode` deprecation warning is separate from this
+repository-scope failure and is not hidden by disabling warnings.
+
 The installed application remains a Flatpak sandbox, with explicit access to:
 
 - Networking, including localhost and remote PostgreSQL servers.
@@ -112,3 +121,6 @@ The Debian 12 application, tests and `.deb` package were built locally. Translat
 catalogs, desktop metadata, workflow syntax and the Flatpak manifest schema are
 checked locally as well. Debian 13 and the full Flatpak build have not yet run in
 this workspace; the hosted workflow provides their first complete package checks.
+On 10 November 2026 the KDE SDK 6.10 ref was reachable at the official Flathub
+repository and the corrected workflow passed actionlint. Full Flatpak build and
+sandbox checks remain pending a hosted run; no local Linux environment was used.

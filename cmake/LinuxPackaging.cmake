@@ -1,8 +1,9 @@
 set(PGADM_DESKTOP_ID io.github.hdijkema.AltPgAdmin)
 install(FILES "packaging/linux/${PGADM_DESKTOP_ID}.desktop"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications COMPONENT Runtime)
-install(FILES "packaging/linux/${PGADM_DESKTOP_ID}.svg"
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps COMPONENT Runtime)
+install(FILES assets/icons/alt-pg-admin.svg
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+    RENAME "${PGADM_DESKTOP_ID}.svg" COMPONENT Runtime)
 install(FILES "packaging/linux/${PGADM_DESKTOP_ID}.metainfo.xml"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo COMPONENT Runtime)
 install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/alt-pg-admin

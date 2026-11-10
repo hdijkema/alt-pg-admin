@@ -10,6 +10,7 @@ if [[ ! $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ || $rele
 fi
 assets=(
     "$package_dir/alt-pg-admin-$version-windows-x64.zip"
+    "$package_dir/alt-pg-admin-$version-windows-x64-setup.exe"
     "$package_dir/alt-pg-admin_$version-debian12_amd64.deb"
     "$package_dir/alt-pg-admin_$version-debian13_amd64.deb"
     "$package_dir/alt-pg-admin-$version-linux-x86_64.flatpak"

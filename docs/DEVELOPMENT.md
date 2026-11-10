@@ -13,6 +13,13 @@ Application sources live under `src/app`, `src/connections`, `src/database`,
 lists, with `src` as the include root for the application, qtxlsxwriter and tests.
 Cross-folder includes state the owning folder; same-folder includes stay local.
 The resource collection is `assets/icons.qrc`, with unchanged `:/icons` aliases.
+The application's SVG and ICO are embedded in that collection. Linux packaging
+installs the SVG under the desktop ID. QApplication sets its window icon (ICO on
+Windows, SVG elsewhere) and desktop-file name in `src/app/main.cpp`. Windows embeds the generated ICO using a configured
+RC file; macOS bundles the generated ICNS as its bundle icon. The checked-in ICO
+and ICNS are produced from the SVG by `tools/generate-app-icons.py` using Inkscape;
+normal builds do not run that tool. The packaging startup check also renders a
+32-pixel application icon to detect missing resources/image plugins.
 Build/test/package scripts and output paths remain at their existing locations.
 
 ## Startup and connection ownership
@@ -317,6 +324,15 @@ the hosted-runner setup and remaining platform/distribution validation.
 Header contracts describe public behaviour; implementation comments explain
 nontrivial transitions and ownership. Avoid repeating the function name as prose.
 Keep multiple statements on separate lines when that makes control flow clearer.
+
+Windows packaging optionally passes the same staged file tree to Inno Setup via
+`packaging/windows/alt-pg-admin.iss`. The pinned compiler bootstrap is confined to
+build-tool setup; it is not an application dependency. CI exercises a private
+installer AppId and fresh fixture for installation/reinstallation/removal, then
+uploads the production ZIP and setup EXE. Release assembly requires both files.
+Flatpak CI registers and preinstalls Flathub/KDE dependencies system-wide, matching
+the builder's default scope; the user-only local installation instructions remain
+available for developers and end users.
 
 The current validated platform is Windows with Qt 6/MSVC and PostgreSQL 18.
 `tests/run-integration.ps1` starts a disposable cluster on loopback, sets test

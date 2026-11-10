@@ -89,7 +89,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
-          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak remote-info --system flathub org.kde.Sdk/x86_64/6.10
+          sudo flatpak install --system --noninteractive -y flathub \
+            org.kde.Sdk/x86_64/6.10 org.kde.Platform/x86_64/6.10
       - name: Set Flatpak application version
         env:
           PGADM_RELEASE_VERSION: ${{ inputs.version }}
@@ -99,13 +102,14 @@ jobs:
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           manifest-path: packaging/flatpak/build.json
+          repository-url: https://dl.flathub.org/repo/flathub.flatpakrepo
           bundle: alt-pg-admin-x86_64.flatpak
           artifact-name: alt-pg-admin-flatpak-x86_64
           upload-artifact: false
           cache: true
       - name: Check installed sandbox and client tools
         run: |
-          flatpak install --user --noninteractive alt-pg-admin-x86_64.flatpak
+          sudo flatpak install --system --noninteractive -y alt-pg-admin-x86_64.flatpak
           mkdir -p build/flatpak-reports
           for language in nl en de; do
             flatpak run --env=QT_QPA_PLATFORM=offscreen io.github.hdijkema.AltPgAdmin \

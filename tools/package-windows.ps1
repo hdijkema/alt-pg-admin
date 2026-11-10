@@ -1,12 +1,15 @@
-# Stage only application files, verify startup with isolated settings, then create a ZIP.
+# Stage application files, verify startup, then create a ZIP and optional Inno installer.
 # Build output and smoke-test state stay outside the distributable application directory.
 param(
     [string]$BuildDirectory = (Join-Path $PSScriptRoot '../build/Release'),
     [string]$QtRoot = 'C:/Qt/6.11.1/msvc2022_64',
     [ValidatePattern('^$|^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$')]
-    [string]$Version = ''
+    [string]$Version = '',
+    [string]$InnoCompiler = '',
+    [switch]$TestInstaller
 )
 $ErrorActionPreference = 'Stop'
+if ($TestInstaller -and !$InnoCompiler) { throw 'TestInstaller requires an InnoCompiler path.' }
 $projectDirectory = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $BuildDirectory = (Resolve-Path -LiteralPath $BuildDirectory).Path
 $QtRoot = (Resolve-Path -LiteralPath $QtRoot).Path
@@ -93,3 +96,27 @@ $destination = Join-Path $projectDirectory 'dist'
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 Move-Item -LiteralPath $archive -Destination (Join-Path $destination $archiveName) -Force
 Write-Output "Portable ZIP: $destination/$archiveName"
+
+if ($InnoCompiler) {
+    $InnoCompiler = (Resolve-Path -LiteralPath $InnoCompiler).Path
+    $installerVersion = $Version
+    if (!$installerVersion) {
+        $versionLine = Get-Content -LiteralPath $report | Where-Object { $_ -like 'Application version: *' } | Select-Object -First 1
+        if (!$versionLine) { throw 'The startup report does not contain an application version.' }
+        $installerVersion = $versionLine.Substring('Application version: '.Length)
+    }
+    if ($installerVersion -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+        throw 'The installer needs a numeric application version.'
+    }
+    $script = Join-Path $projectDirectory 'packaging/windows/alt-pg-admin.iss'
+    & $InnoCompiler "/DAppVersion=$installerVersion" "/DSourceDirectory=$application" "/DOutputDirectory=$destination" $script |
+        Tee-Object -FilePath (Join-Path $staging 'installer-build.txt')
+    if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
+    $installer = Join-Path $destination "alt-pg-admin-$installerVersion-windows-x64-setup.exe"
+    if (!(Test-Path -LiteralPath $installer)) { throw 'Inno Setup did not produce the expected installer.' }
+    Write-Output "Windows installer: $installer"
+    if ($TestInstaller) {
+        & (Join-Path $projectDirectory 'tests/test-windows-installer.ps1') -SourceDirectory $application `
+            -InnoCompiler $InnoCompiler -Version $installerVersion
+    }
+}

@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QIcon>
 #include <QDir>
 #include <QLibraryInfo>
 #include <QSettings>
@@ -16,6 +17,12 @@ int main(int argc, char *argv[])
     QElapsedTimer startup;
     startup.start();
     QApplication a(argc, argv);
+#ifdef Q_OS_WIN
+    a.setWindowIcon(QIcon(":/icons/alt-pg-admin.ico"));
+#else
+    a.setWindowIcon(QIcon(":/icons/alt-pg-admin.svg"));
+#endif
+    a.setDesktopFileName("io.github.hdijkema.AltPgAdmin");
     QCoreApplication::setOrganizationName("Hans");
     QCoreApplication::setApplicationName("PgAdmQt");
     QCoreApplication::setApplicationVersion(PGADM_APP_VERSION);
@@ -49,6 +56,10 @@ int main(int argc, char *argv[])
     w.show();
     if (a.arguments().contains("--startup-check")) {
         QTimer::singleShot(0, &w, [&] {
+            if (a.windowIcon().pixmap(32, 32).isNull()) {
+                a.exit(1);
+                return;
+            }
             const int index = a.arguments().indexOf("--startup-report");
             if (index >= 0 && index + 1 < a.arguments().size()) {
                 QFile report(a.arguments().at(index + 1));

@@ -16,7 +16,9 @@ PostgreSQL 18.6-5 SDK/test tools, then calls:
 
 ```powershell
 .\build-release.cmd '-DPGADM_BUILD_TESTS=OFF' '-DPGADM_RELEASE_VERSION=0.2.0'
-.\tools\package-windows.ps1 -QtRoot $env:PGADM_QT_ROOT -Version 0.2.0
+.\tools\install-inno-setup.ps1
+.\tools\package-windows.ps1 -QtRoot $env:PGADM_QT_ROOT -Version 0.2.0 `
+  -InnoCompiler ./build/tools/inno-setup/ISCC.exe -TestInstaller
 ```
 
 `build-release.cmd` discovers Visual Studio using vswhere. `PGADM_QT_ROOT`,
@@ -34,7 +36,7 @@ isolated startup smoke check; no production credentials or signing secrets are n
 Checkout, Python setup and artifact upload use their v6 actions with Node.js 24.
 
 After successful packaging, the job uploads `alt-pg-admin-windows-x64`, containing
-`alt-pg-admin-windows-x64.zip`. The startup report is uploaded even after a failed packaging step
+the portable ZIP and the Inno Setup installer. The startup and installer reports are uploaded even after a failed packaging step
 and retained for 14 days. Database data directories and application/user settings
 are excluded. Ordinary branch/PR builds produce Actions artifacts only.
 
@@ -59,11 +61,12 @@ Without a release override, the current development version is 0.1.0.
 
 The publishing job waits for Windows, Debian 12, Debian 13 and Flatpak to succeed.
 It downloads only the package artifacts from that same workflow run, checks that
-all four expected versioned files are present and nonempty, and checks an existing
+all five expected versioned files are present and nonempty, and checks an existing
 tag against the built commit. `tools/publish-release.sh` then uses `gh release create`
-with generated notes and all four assets:
+with generated notes and all five assets:
 
 - `alt-pg-admin-0.2.0-windows-x64.zip`
+- `alt-pg-admin-0.2.0-windows-x64-setup.exe`
 - `alt-pg-admin_0.2.0-debian12_amd64.deb`
 - `alt-pg-admin_0.2.0-debian13_amd64.deb`
 - `alt-pg-admin-0.2.0-linux-x86_64.flatpak`
@@ -102,6 +105,30 @@ The workflow passes actionlint 1.7.12. The pinned aqt revision resolves the Qt
 6.11.1 download command successfully in dry-run mode; a fresh hosted SDK installation
 and the complete hosted job still need their first GitHub run.
 
+## Windows installer
+
+`tools/install-inno-setup.ps1` downloads Inno Setup 7.1.1 x64 from the official
+release, verifies its fixed SHA-256 and installs the compiler into `build/tools`.
+This is a build-machine tool, not a dependency installed on application users'
+machines. It is intended for disposable hosted runners or explicit local installer
+development. The product installer does not download or install PostgreSQL services.
+
+`packaging/windows/alt-pg-admin.iss` consumes the same validated staging directory
+as the ZIP. It installs for the current user under LocalAppData/Programs, without
+requesting administrator rights. It provides Dutch/English/German wizard text,
+the application icon, a Start menu shortcut, an optional desktop shortcut and
+an uninstaller. A fixed AppId lets subsequent versions reuse the installation.
+Settings, query files and vault entries are not part of the installer payload and
+are not deleted on uninstall. The installer does not forcibly close a running app.
+
+`-TestInstaller` builds an isolated test identity and installs into a fresh build
+fixture, checks native startup, reinstalls to restore a missing DLL, and uninstalls.
+It verifies that separate settings and an untracked SQL file survive. It never
+uses the production AppId, production settings paths or existing password entries.
+On 10 November 2026 these checks passed locally, together with all seven release
+assembly checks and workflow actionlint validation. The generated installer is
+unsigned; clean-machine/hosted Windows acceptance still needs verification.
+
 ## Linux jobs
 
 `.github/workflows/linux.yml` is called by the main workflow and adds a Debian
@@ -111,8 +138,8 @@ permissions, client-tool versions and validation limits.
 
 ## Remaining platform work
 
-- Windows: add the Inno Setup installer from the same staging directory, app
-  branding, and clean-machine checks before a public release.
+- Windows: validate the configured installer job on a hosted runner and perform
+  clean-machine checks before a public release; configure signing if needed.
 - macOS: add a separate native build job with matching Qt/PostgreSQL dependencies,
   tests, deployed app bundle and DMG. Select supported architectures explicitly;
   signing/notarisation require later release configuration.
