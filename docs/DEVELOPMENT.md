@@ -325,6 +325,10 @@ and DMG flow. Client tools are bundled beside the executable; dylibbundler deplo
 their libraries and macdeployqt deploys Qt. Packaging checks Mach-O dependencies
 and architecture, removes development rpaths, ad-hoc signs and mounts/tests the
 DMG before export. `MACOS-PACKAGING.md` records native validation and signing limits.
+The dependency audit reads import commands from `otool -l`, excluding the inspected
+library's own `LC_ID_DYLIB`. Human-readable `otool -L` reports are written before
+validation, including on failure. `tests/test-macos-packaging.py` checks this
+distinction without native tools, files, signing credentials or a database.
 Release assembly requires eight platform packages, including the DMG and Debian
 12/13 packages for both amd64 and ARM64. The Linux workflow selects native runners
 per architecture, verifies the container/package architecture and uses distinct

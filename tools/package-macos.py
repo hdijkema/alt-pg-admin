@@ -16,6 +16,20 @@ def run(arguments, **options):
     return subprocess.run([str(arg) for arg in arguments], check=True, **options)
 
 
+def check_dependencies(file: Path, load_commands: str) -> None:
+    """Reject non-system absolute library imports in otool -l output.
+
+    LC_ID_DYLIB names the inspected library itself, so only load/re-export
+    commands participate in the dependency check; paths are never rewritten here.
+    """
+    dependencies = re.findall(
+        r'cmd LC_(?:LOAD_DYLIB|LOAD_WEAK_DYLIB|REEXPORT_DYLIB|LAZY_LOAD_DYLIB|LOAD_UPWARD_DYLIB)'
+        r'\s+cmdsize \d+\s+name (.*?) \(offset', load_commands)
+    for dependency in dependencies:
+        if dependency.startswith('/') and not dependency.startswith(('/usr/lib/', '/System/Library/')):
+            raise ValueError(f'External dependency left in {file}: {dependency}')
+
+
 def package(build: Path, qt: Path, pg: Path, requested_version: str) -> None:
     """Bundle client dependencies and Qt, ad-hoc sign, mount/test and emit an arm64 DMG."""
     if sys.platform != 'darwin' or os.uname().machine != 'arm64':
@@ -96,11 +110,9 @@ def package(build: Path, qt: Path, pg: Path, requested_version: str) -> None:
             run(['install_name_tool', '-add_rpath', '@executable_path/../Frameworks', file])
         output = subprocess.check_output(['otool', '-L', str(file)], text=True)
         audit.append(output)
-        for line in output.splitlines()[1:]:
-            dependency = line.strip().split(' (', 1)[0]
-            if dependency.startswith('/') and not dependency.startswith(('/usr/lib/', '/System/Library/')):
-                raise ValueError(f'External dependency left in {file.name}: {dependency}')
-    (reports / 'dependencies.txt').write_text('\n'.join(audit))
+        # Retain the inspected libraries even when a later dependency fails validation.
+        (reports / 'dependencies.txt').write_text('\n'.join(audit))
+        check_dependencies(file, load_commands)
     for file in linked_binaries:
         run(['codesign', '--force', '--sign', '-', file])
     run(['codesign', '--force', '--deep', '--sign', '-', app])

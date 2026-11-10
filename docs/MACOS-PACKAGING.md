@@ -36,8 +36,13 @@ Gatekeeper acceptance for a quarantined Internet download.
 The architecture check uses `lipo <file> -verify_arch arm64`: the file precedes
 the variable-length architecture list, so its pathname is not parsed as an
 additional architecture. The hosted log on 10 November confirmed compilation
-and Qt deployment; packaging stopped at this argument-order error before signing
-or DMG creation. Those later stages still need a successful native run.
+and Qt deployment. After correcting that argument order, the next hosted run
+reached the dependency audit. It incorrectly treated the Cocoa plugin's own
+absolute `LC_ID_DYLIB` as an external import. The audit now reads the actual
+load/weak-load/re-export commands from `otool -l`; the library's own identity
+does not participate. Real absolute non-system imports are still rejected,
+including an executable's first import. Dependency reports are retained even
+when validation stops. Signing and DMG creation still need a successful native run.
 
 The DMG contains the app and an Applications shortcut for drag-and-drop installation.
 Packaging verifies and mounts the actual DMG read-only, checks native startup,
@@ -50,7 +55,7 @@ block. Failed checks prevent copying the DMG to `dist` or uploading it as a pack
 A versioned build creates `alt-pg-admin-0.2.0-macos-arm64.dmg` and the Actions
 artifact `alt-pg-admin-macos-arm64`. Branch builds omit the version in the filename.
 Reports are separate artifacts. Only the main versioned workflow publishes a
-release, after all six required packages succeed.
+release, after all eight required packages succeed.
 
 On a development Mac with the matching Qt SDK:
 
@@ -62,8 +67,12 @@ PGADM_QT_ROOT=/path/to/Qt/6.11.1/macos PGADM_RELEASE_VERSION=0.2.0 \
 
 ## Validation
 
-On 10 November 2026 workflow actionlint, shell/Python syntax and eight release
-helper checks passed locally. The Qt download command resolves the expected SDK
+On 10 November 2026 workflow actionlint and three dependency-audit regression
+tests passed locally. The tests cover the absolute Cocoa plugin identity, real
+external imports (including weak and re-exported libraries) and executables
+without a library identity. They run before compilation in the macOS workflow.
+Earlier shell/Python syntax and release-helper checks also passed locally.
+The Qt download command resolves the expected SDK
 in dry-run mode. The supplied ICO was preserved; ICNS was regenerated from the SVG.
 No native Mac build, bundle execution or DMG mount was performed in this Windows
 workspace. The first hosted job must confirm deployment, Cocoa startup, dependencies
