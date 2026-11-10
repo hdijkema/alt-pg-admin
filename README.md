@@ -330,7 +330,9 @@ ownership/ACL commands.
 
 ## Dependencies and build
 
-Currently validated: Windows, Qt 6.11.1 MSVC 2022 x64, CMake 3.24 or newer and Ninja.
+Windows baseline: Qt 6.11.1 MSVC 2022 x64, CMake 3.24 or newer and Ninja.
+The Debian 12 build also passes with Qt 6.4.2, GCC 12 and the system libpq 15.19;
+see the Linux commands below.
 The standalone build script contains this machine's Qt/Visual Studio paths.
 
 - PostgreSQL 18.6-5 SDK/runtime from the EDB binary distribution, stored locally.
@@ -380,7 +382,7 @@ On libpq versions without asynchronous cancellation, cancellation runs in a
 separate background task. Newer libpq retains its nonblocking cancel API.
 
 ```sh
-sudo apt-get install build-essential cmake ninja-build qt6-base-dev qt6-svg-dev libpq-dev libsecret-1-dev
+sudo apt-get install build-essential cmake ninja-build qt6-base-dev qt6-svg-dev qt6-l10n-tools qt6-translations-l10n libpq-dev libsecret-1-dev
 cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DPGADM_BUILD_TESTS=ON
 cmake --build build/linux -j 4
 QT_QPA_PLATFORM=offscreen ctest --test-dir build/linux --output-on-failure
@@ -392,6 +394,20 @@ sources. Database integration tests are skipped without `PGADM_TEST_PORT`.
 Install `postgresql-client` separately if you need backup/restore and database
 maintenance command-line tools; these are resolved through PATH on Linux. Use
 client tools at least as new as the server for backups.
+
+### Interface language
+
+Choose **Help > Taal / Language / Sprache** and select **Nederlands**, **English**
+or **Deutsch**. The preference is saved in the application settings and takes
+effect on the next start. Changing it does not close queries or connections.
+Dutch remains the default. `--language nl`, `--language en` or `--language de`
+overrides the stored preference for one launch, including startup checks.
+
+Application catalogs in `translations/pgadmin_en.ts` and `pgadmin_de.ts` are compiled
+by Qt Linguist's `lrelease` and embedded in the executable. Standard Qt dialogs use
+Qt's own translations, provided by the distribution/runtime or deployed on Windows.
+SQL, identifiers, query text and server/tool error output retain their original
+language. See [Linux packaging](docs/LINUX-PACKAGING.md) for Debian and Flatpak builds.
 
 ## Settings and startup measurement
 
@@ -495,16 +511,18 @@ Pushing a tag such as `v0.2.0`, or supplying a version in a manual workflow run,
 publishes a GitHub Release with the versioned portable ZIP after successful
 packaging. The version also appears in the application. Branch/PR builds only
 produce Actions artifacts. Publication still needs validation on GitHub.
-The Inno Setup installer, macOS app bundle/DMG and Linux Flatpak jobs remain to be
-implemented and validated. Flatpak targets Debian,
-Ubuntu and Linux Mint with Flatpak configured. macOS/Linux are not yet built or validated; the
-current dependency downloader and integration scripts are Windows-specific.
+The Inno Setup installer and macOS app bundle/DMG remain to be implemented.
+Linux packaging is configured in `.github/workflows/linux.yml`: native Debian 12/13
+packages and a Flatpak bundle. The Debian 12 build and package have been checked
+locally; Debian 13 and the full Flatpak build still need their first hosted run.
+The existing PostgreSQL downloader and database integration scripts remain Windows-specific.
 The Windows ZIP contains deployed Qt/PostgreSQL tools and app-local MSVC runtime
 DLLs, and passes a local startup smoke check. Clean-machine operation still needs
 validation. The future installer will use the same staging directory. Settings and credentials retain their existing
 per-user locations; a separate portable-settings mode is not currently planned.
-Linux packaging must validate sandbox networking, credential storage and file
-portals, and include PostgreSQL client/maintenance tools. Flathub publication is
+The Flatpak includes PostgreSQL client/maintenance tools and grants networking,
+host-file and local-socket access for administration. Desktop credential storage
+and host access still need acceptance testing in the installed sandbox. Flathub publication is
 a separate release step after installable CI artefacts have been tested.
 
 Graphical object create/alter/drop editors are deferred because SQL covers the

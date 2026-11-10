@@ -14,10 +14,13 @@ cmake -S . -B "$build_dir" -G Ninja -DCMAKE_BUILD_TYPE=Release \
     "-DPGADM_DEBIAN_VERSION=$VERSION_ID" "-DPGADM_RELEASE_VERSION=${PGADM_RELEASE_VERSION:-}" "$@"
 cmake --build "$build_dir" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
 # No running database, credentials or desktop keyring are required by this subset.
-QT_QPA_PLATFORM=offscreen ctest --test-dir "$build_dir" --output-on-failure -R '^(pgsession|queries)$'
-QT_QPA_PLATFORM=offscreen "$build_dir/tst_browser" translations savedQueriesAndWidths \
-    editorSearchAndCompletion editorTabsRestore profileDialogKeepsSecretsSeparate \
-    databaseJobValidation roleSqlValidation maintenanceSqlValidation
+QT_QPA_PLATFORM=offscreen ctest --test-dir "$build_dir" --output-on-failure -R '^(pgsession|queries|translations_catalog)$'
+(
+    cd "$build_dir"
+    QT_QPA_PLATFORM=offscreen ./tst_browser translations savedQueriesAndWidths \
+        editorSearchAndCompletion editorTabsRestore profileDialogKeepsSecretsSeparate \
+        databaseJobValidation roleSqlValidation maintenanceSqlValidation
+)
 for language in nl en de; do
     QT_QPA_PLATFORM=offscreen "$build_dir/pgadmin_qt" --language "$language" \
         --settings-file "$repo_dir/$build_dir/smoke-$language.ini" --startup-check \

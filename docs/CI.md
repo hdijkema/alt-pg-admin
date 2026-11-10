@@ -90,6 +90,13 @@ The workflow passes actionlint 1.7.12. The pinned aqt revision resolves the Qt
 6.11.1 download command successfully in dry-run mode; a fresh hosted SDK installation
 and the complete hosted job still need their first GitHub run.
 
+## Linux jobs
+
+`.github/workflows/linux.yml` adds a Debian 12/13 amd64 container matrix and a
+Flatpak x86_64 job. Each produces an installable Actions artifact, without publishing
+a release. See [Linux packaging](LINUX-PACKAGING.md) for build/install commands,
+permissions, client-tool versions and validation limits.
+
 ## Remaining platform work
 
 - Windows: add the Inno Setup installer from the same staging directory, app
@@ -97,10 +104,10 @@ and the complete hosted job still need their first GitHub run.
 - macOS: add a separate native build job with matching Qt/PostgreSQL dependencies,
   tests, deployed app bundle and DMG. Select supported architectures explicitly;
   signing/notarisation require later release configuration.
-- Linux: add the Flatpak manifest and a Linux job using a maintained KDE/Qt runtime,
-  PostgreSQL 18 tools, and sandbox tests for networking, the credential store and
-  file portals. Validate on the target desktop distributions.
+- Linux: run the new Debian 13/Flatpak hosted jobs and validate database networking,
+  local sockets, backup/restore and credential storage on installed desktop packages.
 
-macOS and Linux jobs are not configured or validated yet. Keep platform scripts
+The macOS job is not configured yet. Linux jobs are configured; Debian 12 has local
+build/package validation, while Debian 13 and Flatpak still need hosted validation. Keep platform scripts
 usable locally, and have each Actions job call those scripts. Add versioned release
 uploads after packages and their platform checks are ready.

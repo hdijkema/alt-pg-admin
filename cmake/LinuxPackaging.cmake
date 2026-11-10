@@ -5,7 +5,8 @@ install(FILES "packaging/linux/${PGADM_DESKTOP_ID}.svg"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps COMPONENT Runtime)
 install(FILES "packaging/linux/${PGADM_DESKTOP_ID}.metainfo.xml"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo COMPONENT Runtime)
-install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/alt-pg-admin COMPONENT Runtime)
+install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/alt-pg-admin
+    RENAME copyright COMPONENT Runtime)
 install(FILES "${qtkeychain_SOURCE_DIR}/COPYING" DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/alt-pg-admin
     RENAME QtKeychain-COPYING.txt COMPONENT Runtime)
 install(FILES "${libxlsxwriter_SOURCE_DIR}/License.txt" DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/alt-pg-admin
@@ -18,11 +19,15 @@ install(FILES assets/icons/LICENSE.txt DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/
 set(CPACK_GENERATOR DEB)
 set(CPACK_PACKAGE_NAME alt-pg-admin)
 set(CPACK_PACKAGE_VENDOR "alt-pg-admin contributors")
-set(CPACK_PACKAGE_CONTACT "https://github.com/hdijkema/alt-pg-admin/issues")
+set(CPACK_PACKAGE_CONTACT "alt-pg-admin maintainers <hdijkema@users.noreply.github.com>")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Native PostgreSQL administration application")
+set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Manage connection profiles, browse database objects, execute SQL, export results
+ to CSV or Excel, and manage roles, privileges, backups and maintenance tasks.
+ The interface is available in Dutch, English and German.")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/hdijkema/alt-pg-admin")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
+set(CPACK_STRIP_FILES ON)
 set(CPACK_COMPONENTS_ALL Runtime)
 set(CPACK_DEB_COMPONENT_INSTALL ON)
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME alt-pg-admin)

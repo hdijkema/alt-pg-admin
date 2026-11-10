@@ -19,5 +19,5 @@ if errorlevel 1 exit /b 1
 if errorlevel 1 exit /b 1
 "%PGADM_CMAKE%" --build "%~dp0build\Release"
 if errorlevel 1 exit /b 1
-"%PGADM_QT_ROOT%\bin\windeployqt.exe" --release --no-translations --no-opengl-sw --no-system-d3d-compiler "%~dp0build\Release\pgadmin_qt.exe"
+"%PGADM_QT_ROOT%\bin\windeployqt.exe" --release --translations de,nl --no-opengl-sw --no-system-d3d-compiler "%~dp0build\Release\pgadmin_qt.exe"
 exit /b %errorlevel%

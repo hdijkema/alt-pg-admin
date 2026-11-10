@@ -31,7 +31,7 @@ foreach ($name in @('dxcompiler.dll', 'dxil.dll')) {
 }
 New-Item -ItemType Directory -Path (Join-Path $application 'platforms') | Out-Null
 Copy-Item -LiteralPath (Join-Path $BuildDirectory 'platforms/qwindows.dll') -Destination (Join-Path $application 'platforms')
-foreach ($folder in @('iconengines', 'imageformats', 'styles', 'tls', 'networkinformation', 'generic')) {
+foreach ($folder in @('iconengines', 'imageformats', 'styles', 'tls', 'networkinformation', 'generic', 'translations')) {
     $source = Join-Path $BuildDirectory $folder
     if (Test-Path -LiteralPath $source) { Copy-Item -LiteralPath $source -Destination $application -Recurse }
 }

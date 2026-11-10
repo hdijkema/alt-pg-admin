@@ -239,6 +239,10 @@ if(PGADM_BUILD_TESTS)
     endif()
     add_test(NAME browser COMMAND tst_browser)
     set_tests_properties(browser PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    add_test(NAME translations_ui COMMAND tst_browser translations)
+    set_tests_properties(translations_ui PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    add_test(NAME translations_catalog COMMAND ${Python3_EXECUTABLE}
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/check-translations.py")
 endif()
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

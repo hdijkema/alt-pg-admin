@@ -36,7 +36,8 @@ int main(int argc, char *argv[])
         language = "nl";
     }
     QTranslator qtTranslator;
-    if (qtTranslator.load("qtbase_" + language, QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
+    if (qtTranslator.load("qt_" + language, QCoreApplication::applicationDirPath() + "/translations")
+        || qtTranslator.load("qtbase_" + language, QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
         a.installTranslator(&qtTranslator);
     QTranslator translator;
     if (language != "nl") {
