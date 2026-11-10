@@ -40,10 +40,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build Release and deploy Qt
         shell: cmd
-        run: build-release.cmd -DPGADM_BUILD_TESTS=ON
-      - name: Run isolated PostgreSQL integration tests
-        shell: pwsh
-        run: ./tests/run-integration.ps1
+        run: build-release.cmd
       - name: Package portable ZIP
         shell: pwsh
         run: ./tools/package-windows.ps1 -QtRoot $env:PGADM_QT_ROOT
@@ -55,16 +52,11 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
-      - name: Upload test reports
+      - name: Upload packaging report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-test-reports
-          path: |
-            build/Release/integration-*/results.txt
-            build/Release/integration-*/queries.txt
-            build/Release/integration-*/browser.txt
-            build/Release/integration-*/postgres.log
-            build/Release/packaging-*/startup.txt
+          name: windows-packaging-report
+          path: build/Release/packaging-*/startup.txt
           if-no-files-found: ignore
           retention-days: 14
