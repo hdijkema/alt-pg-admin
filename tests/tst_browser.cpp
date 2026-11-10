@@ -58,6 +58,7 @@ class BrowserTest : public QObject
     const QString database = "browser_" + suffix;
     const QString service = "PgAdmQt.Tests." + suffix;
     const QString secretKey = "credential/" + suffix;
+    bool keychainRoundTripStarted = false;
     QString mainCredentialKey;
     QVariantMap profile() const
     {
@@ -510,6 +511,7 @@ private slots:
 
     void qtKeychainRoundTrip()
     {
+        keychainRoundTripStarted = true;
         PasswordStore store(nullptr, service);
         bool done = false;
         QString error, read;
@@ -1557,10 +1559,12 @@ private slots:
 
     void cleanupTestCase()
     {
-        PasswordStore store(nullptr, service);
         bool done = false;
-        store.remove(secretKey, [&](const QString &) { done = true; });
-        QTRY_VERIFY_WITH_TIMEOUT(done, 5000);
+        if (keychainRoundTripStarted) {
+            PasswordStore store(nullptr, service);
+            store.remove(secretKey, [&](const QString &) { done = true; });
+            QTRY_VERIFY_WITH_TIMEOUT(done, 5000);
+        }
         if (!mainCredentialKey.isEmpty()) {
             PasswordStore mainStore;
             done = false;
