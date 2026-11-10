@@ -116,6 +116,7 @@ private:
         QString exportPath;
         bool excel = false;
         QVector<int> widths;
+        bool rollbackExplain = false;
     };
     QHash<PgSession *, PendingQuery> pendingScripts;
     QHash<QString, QVariantMap> sessionProfiles;

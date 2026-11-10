@@ -59,8 +59,24 @@ database when its connection disappears.
 ## SQL execution and result storage
 
 `QueryTab::sqlToExecute` returns the selection or entire editor text.
-`PgAdmMain::runQuery` selects the tab's session and calls `startExecution` before
-dispatching SQL. `SqlScript::split` recognises strings, quoted identifiers,
+`QueryTab::executionSql` leaves ordinary output unchanged, but prefixes each
+statement with EXPLAIN when the execution-plan tab is selected. Per-tab controls
+provide ANALYZE, VERBOSE, COSTS, SETTINGS, BUFFERS, WAL, TIMING, SUMMARY, MEMORY,
+GENERIC_PLAN, SERIALIZE and output format. ANALYZE defaults off; WAL, TIMING and
+SERIALIZE require it, and GENERIC_PLAN excludes it. Disabled newer options are
+omitted for older servers; enabled MEMORY/GENERIC_PLAN/SERIALIZE require a server
+version supporting them. Explicit EXPLAIN commands retain their written options.
+Result annotations and selected SQL are preserved. Controls freeze during execution;
+the plan tab remains selected and displays every completed plan with a heading.
+`PgAdmMain::executeQuery` selects the tab's session and calls `startExecution` before
+dispatching SQL. Plan-mode requests carry `rollbackExplain` through deferred
+connection and optional file export. `PgConnection` accepts only EXPLAIN statements
+in this mode, runs BEGIN (or a savepoint in an existing healthy transaction), and
+collects plans before asynchronous rollback. Error/cancellation follows the same
+cleanup path; final completion and export publication wait for cleanup. Internal
+transaction commands never enter results or files. Failed pre-existing transactions
+are rejected. Rollback cannot undo sequence advancement or external function effects.
+`SqlScript::split` retains the first unquoted keyword and recognises strings, quoted identifiers,
 dollar bodies and nested comments; it is not a complete PostgreSQL parser.
 The worker executes statements in order and stops on the first error or cancel.
 Autocommit remains PostgreSQL's default unless SQL explicitly opens a transaction.
@@ -309,7 +325,12 @@ and DMG flow. Client tools are bundled beside the executable; dylibbundler deplo
 their libraries and macdeployqt deploys Qt. Packaging checks Mach-O dependencies
 and architecture, removes development rpaths, ad-hoc signs and mounts/tests the
 DMG before export. `MACOS-PACKAGING.md` records native validation and signing limits.
-Release assembly requires six platform packages, including the DMG.
+Release assembly requires eight platform packages, including the DMG and Debian
+12/13 packages for both amd64 and ARM64. The Linux workflow selects native runners
+per architecture, verifies the container/package architecture and uses distinct
+artifact names. CPack derives the Debian architecture from `dpkg`; the local build
+script is shared by both architectures. ARM64 CI and Raspberry Pi hardware checks
+remain pending.
 
 Debian 13 separates SVG codecs into `qt6-svg-plugins`; the build job and runtime
 package declare it explicitly. Debian 12 keeps the plugins in libqt6svg6. Debian

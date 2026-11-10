@@ -33,6 +33,7 @@ public:
     bool hasUtf8Bom() const { return utf8Bom; }
     void setUtf8Bom(bool value) { utf8Bom = value; }
     void showPlan();
+    bool planSelected() const;
     void setConnections(const QVariantList &connections);
     QString connectionId() const;
     void selectConnection(const QString &id);
@@ -52,6 +53,12 @@ public:
     bool isRunning() const { return running; }
     // Return the selected SQL, normalising paragraph separators, or the whole editor.
     QString sqlToExecute() const;
+    // goal: Prepare selection/editor SQL for the currently selected output mode.
+    // pre: error is non-null; called before startExecution freezes the controls.
+    // result: Original SQL, or individually EXPLAIN-prefixed statements; empty on error.
+    // internals: SqlScript splits statements and identifies explicit EXPLAIN commands;
+    //            plan controls supply options without changing editor contents.
+    QString executionSql(QString *error) const;
     // Copy every stored section as TSV plus escaped HTML, preserving clipping markers.
     void copyAll();
     // Apply bounded widths by column position. Programmatic restoration emits no change.
@@ -74,6 +81,11 @@ private:
     CellViewer *details;
     QPlainTextEdit *messages;
     QPlainTextEdit *plan;
+    QWidget *planPanel;
+    QWidget *planControls;
+    QVector<QCheckBox *> explainOptions;
+    QComboBox *planFormat;
+    QComboBox *planSerialize;
     QLabel *state;
     bool running = false;
     bool showAll = true;

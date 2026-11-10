@@ -1205,8 +1205,8 @@ PgSession *PgAdmMain::querySession(QueryTab *tab)
         tab->appendMessage(tr("Eigen tabsessie | Backend PID: %1").arg(info.value("backendPid").toString()));
         if (!pendingScripts.contains(session)) return;
         const auto request = pendingScripts.take(session);
-        const bool accepted = request.exportPath.isEmpty() ? session->execute(request.sql) :
-            session->executeToFile(request.sql, request.exportPath, request.excel, request.widths);
+        const bool accepted = request.exportPath.isEmpty() ? session->execute(request.sql, request.rollbackExplain) :
+            session->executeToFile(request.sql, request.exportPath, request.excel, request.widths, request.rollbackExplain);
         if (accepted) recordHistory(request.sql, tab);
         if (!accepted) {
             executing.remove(session);
@@ -1303,7 +1303,13 @@ void PgAdmMain::executeQuery(const QString &exportPath, bool excel)
 {
     auto *tab = currentQuery();
     if (!tab || !runAction->isEnabled()) return;
-    const auto sql = tab->sqlToExecute();
+    QString error;
+    const auto sql = tab->executionSql(&error);
+    if (!error.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("SQL"), error);
+        return;
+    }
+    if (sql.trimmed().isEmpty()) return;
     if (sql.size() > 8 * 1024 * 1024) {
         QMessageBox::warning(this, tr("Script te groot"), tr("De editor voert maximaal 8 miljoen tekens per keer uit."));
         return;
@@ -1316,7 +1322,7 @@ void PgAdmMain::executeQuery(const QString &exportPath, bool excel)
         tab->appendMessage(tr("Eigen tabsessie | Backend PID: %1").arg(session->information().value("backendPid").toString()));
     executing.insert(session, tab);
     if (session->state() == PgSession::Disconnected) {
-        pendingScripts[session] = {sql, exportPath, excel, {}};
+        pendingScripts[session] = {sql, exportPath, excel, {}, tab->planSelected()};
         for (const auto &width : tab->columnWidths()) pendingScripts[session].widths.append(width.toInt());
         const auto runtime = sessionProfiles.value(tab->connectionId());
         session->open(runtime, serverPasswords.value(runtime.value("serverId").toString()));
@@ -1325,7 +1331,8 @@ void PgAdmMain::executeQuery(const QString &exportPath, bool excel)
     }
     QVector<int> widths;
     for (const auto &width : tab->columnWidths()) widths.append(width.toInt());
-    const bool accepted = exportPath.isEmpty() ? session->execute(sql) : session->executeToFile(sql, exportPath, excel, widths);
+    const bool accepted = exportPath.isEmpty() ? session->execute(sql, tab->planSelected()) :
+        session->executeToFile(sql, exportPath, excel, widths, tab->planSelected());
     if (accepted) recordHistory(sql, tab);
     if (!accepted) {
         executing.remove(session);

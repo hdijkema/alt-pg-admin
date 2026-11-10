@@ -1447,6 +1447,14 @@ Backend-PID: %6</translation>
   <context>
     <name>PgConnection</name>
     <message>
+      <source>Uitvoeringsplan accepteert alleen EXPLAIN-opdrachten.</source>
+      <translation>Der Ausführungsplan akzeptiert nur EXPLAIN-Anweisungen.</translation>
+    </message>
+    <message>
+      <source>Herstel eerst de open transactie met ROLLBACK voordat je een uitvoeringsplan opvraagt.</source>
+      <translation>Stellen Sie die offene Transaktion zunächst mit ROLLBACK wieder her, bevor Sie einen Ausführungsplan anfordern.</translation>
+    </message>
+    <message>
       <location filename="../src/database/pgsession.cpp" line="26" />
       <source>Verbindingstime-out. Controleer host, poort en netwerk.</source>
       <translation>Zeitüberschreitung beim Verbinden. Prüfen Sie Host, Port und Netzwerk.</translation>
@@ -1660,6 +1668,14 @@ verify-ca / verify-full verwenden die libpq-Zertifikatseinstellungen.</translati
   </context>
   <context>
     <name>QueryTab</name>
+    <message>
+      <source>ANALYZE voert de query echt uit; wijzigingen worden daarna teruggedraaid. Sequencewaarden en externe effecten kunnen wel blijven bestaan.</source>
+      <translation>ANALYZE führt die Abfrage tatsächlich aus; Änderungen werden danach zurückgerollt. Sequenzwerte und externe Effekte können jedoch bestehen bleiben.</translation>
+    </message>
+    <message>
+      <source>F5 voert de selectie of het script uit met EXPLAIN. Bestaande EXPLAIN-opdrachten behouden hun eigen opties.</source>
+      <translation>F5 führt die Auswahl oder das Skript mit EXPLAIN aus. Vorhandene EXPLAIN-Anweisungen behalten ihre eigenen Optionen.</translation>
+    </message>
     <message>
       <location filename="../src/query/querytab.cpp" line="42" />
       <source>Verbinding:</source>

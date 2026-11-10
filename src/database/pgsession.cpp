@@ -90,30 +90,39 @@ public:
     // Finish any active script before releasing libpq and announcing disconnection.
     void close()
     {
+        // Closing the connection itself rolls back; do not start asynchronous cleanup here.
+        planGuardActive = false;
         if (running) finishScript(false);
         release();
         emit disconnected();
     }
 
     // Validate script splitting/string mode and initialise bounded sequential execution state.
-    void execute(const QString &sql)
+    void execute(const QString &sql, bool rollbackExplain = false)
     {
-        executeScript(sql, {}, false, {});
+        executeScript(sql, {}, false, {}, rollbackExplain);
     }
 
     // Keep the full-file path on the same worker/session as ordinary tab execution.
-    void executeToFile(const QString &sql, const QString &path, bool excel, const QVector<int> &widths)
+    void executeToFile(const QString &sql, const QString &path, bool excel, const QVector<int> &widths, bool rollbackExplain)
     {
-        executeScript(sql, path, excel, widths);
+        executeScript(sql, path, excel, widths, rollbackExplain);
     }
 
     // Initialise file staging before dispatch; preview storage keeps its original limits.
-    void executeScript(const QString &sql, const QString &path, bool excel, const QVector<int> &widths)
+    void executeScript(const QString &sql, const QString &path, bool excel, const QVector<int> &widths, bool rollbackExplain)
     {
         if (!established || running) return;
         QString error;
 // Scan statement boundaries outside quoted strings/bodies and nested comments, retaining result annotations.
         statements = SqlScript::split(sql, &error);
+        if (rollbackExplain) {
+            for (const auto &statement : statements)
+                if (statement.keyword != "EXPLAIN") error = tr("Uitvoeringsplan accepteert alleen EXPLAIN-opdrachten.");
+            const auto transaction = PQtransactionStatus(connection);
+            if (transaction != PQTRANS_IDLE && transaction != PQTRANS_INTRANS)
+                error = tr("Herstel eerst de open transactie met ROLLBACK voordat je een uitvoeringsplan opvraagt.");
+        }
         const auto *strings = PQparameterStatus(connection, "standard_conforming_strings");
         if (strings && QByteArray(strings) != "on") {
             static const QRegularExpression reset("^\\s*(?:RESET\\s+standard_conforming_strings|SET\\s+standard_conforming_strings\\s*(?:=|TO)\\s*(?:on|true|1))\\s*;?\\s*$", QRegularExpression::CaseInsensitiveOption);
@@ -145,7 +154,12 @@ public:
             finishScript(error.isEmpty());
             return;
         }
-        nextStatement();
+        if (rollbackExplain) {
+            const bool savepoint = PQtransactionStatus(connection) == PQTRANS_INTRANS;
+            planCleanup = savepoint ? "ROLLBACK TO SAVEPOINT pgadm_explain; RELEASE SAVEPOINT pgadm_explain;" : "ROLLBACK;";
+            planStarting = true;
+            sendPlanControl(savepoint ? "SAVEPOINT pgadm_explain;" : "BEGIN;");
+        } else nextStatement();
     }
 
     // Generate SCRAM locally with an explicit algorithm, avoiding a blocking
@@ -181,8 +195,9 @@ public:
     // Request cancellation without blocking the connection worker.
     void cancel()
     {
-        if (!running || cancelled) return;
+        if (!running || cancelled || (planControl && !planStarting)) return;
         cancelled = true;
+        if (planControl) return;
 #ifdef LIBPQ_HAS_ASYNC_CANCEL
         cancelConnection = PQcancelCreate(connection);
         if (!cancelConnection || !PQcancelStart(cancelConnection)) {
@@ -233,6 +248,9 @@ private:
     void release()
     {
         fileExport.reset();
+        planGuardActive = false;
+        planControl = false;
+        planStarting = false;
         clearCancel();
         timeout->stop();
         if (lookup >= 0) QHostInfo::abortHostLookup(lookup);
@@ -249,6 +267,7 @@ private:
     // Publish a terminal query error when needed, then release resources and report connection failure.
     void fail(const QString &message, bool needsPassword)
     {
+        planGuardActive = false;
         if (running) {
             pending.error = true;
             pending.finished = true;
@@ -385,6 +404,17 @@ private:
             return;
         }
 #endif
+        if (planGuardActive && connection && established && PQstatus(connection) == CONNECTION_OK) {
+#ifdef LIBPQ_HAS_ASYNC_CANCEL
+            if (cancelConnection) {
+                QTimer::singleShot(20, this, [this, success] { if (running) finishScript(success); });
+                return;
+            }
+#endif
+            planSuccess = success && !cancelled;
+            sendPlanControl(planCleanup);
+            return;
+        }
         running = false;
         waiting = false;
         clearCancel();
@@ -407,6 +437,49 @@ private:
         const auto state = connection ? PQtransactionStatus(connection) : PQTRANS_UNKNOWN;
         emit transactionChanged(state == PQTRANS_INTRANS || state == PQTRANS_INERROR);
         emit executionFinished(success, transaction);
+        if (notifier) notifier->setEnabled(true);
+    }
+
+    // Run BEGIN/SAVEPOINT or rollback cleanup asynchronously without publishing internal command rows.
+    void sendPlanControl(const QString &sql)
+    {
+        planControl = true;
+        queryFailed = false;
+        waiting = false;
+        if (notifier) notifier->setEnabled(false);
+        if (!PQsendQuery(connection, sql.toUtf8().constData())) {
+            planGuardActive = false;
+            connectionFailed();
+            return;
+        }
+        flushQuery();
+    }
+
+    // Drain transaction-control responses before dispatching plans or announcing final completion.
+    void readPlanControl()
+    {
+        if (!PQconsumeInput(connection)) { connectionFailed(); return; }
+        while (!PQisBusy(connection)) {
+            auto *result = PQgetResult(connection);
+            if (!result) {
+                planControl = false;
+                if (planStarting) {
+                    planStarting = false;
+                    planGuardActive = !queryFailed;
+                    if (queryFailed) finishScript(false);
+                    else nextStatement();
+                } else {
+                    planGuardActive = false;
+                    finishScript(planSuccess && !queryFailed);
+                }
+                return;
+            }
+            if (PQresultStatus(result) != PGRES_COMMAND_OK) {
+                queryFailed = true;
+                emit notice(QString::fromUtf8(PQresultErrorMessage(result)).trimmed());
+            }
+            PQclear(result);
+        }
         if (notifier) notifier->setEnabled(true);
     }
 
@@ -487,6 +560,7 @@ private:
     void readResults()
     {
         if (!running || waiting) return;
+        if (planControl) { readPlanControl(); return; }
         if (fileExport && exportCancelled->load() && !cancelled) cancel();
         if (complete) {
             if (queryFailed) finishScript(false);
@@ -615,6 +689,11 @@ private:
     bool complete = false;
     bool queryFailed = false;
     bool cancelled = false;
+    bool planGuardActive = false;
+    bool planControl = false;
+    bool planStarting = false;
+    bool planSuccess = false;
+    QString planCleanup;
     std::shared_ptr<std::atomic_bool> exportCancelled;
     std::unique_ptr<FullResultExport> fileExport;
     QString exportPath;
@@ -707,24 +786,24 @@ void PgSession::close()
 }
 
 // Mark a connected idle session busy before queueing SQL; report acceptance rather than server success.
-bool PgSession::execute(const QString &sql)
+bool PgSession::execute(const QString &sql, bool rollbackExplain)
 {
     if (connectionState != Connected || busy) return false;
     busy = true;
     exportCancelled->store(false);
     emit stateChanged();
-    emit executeRequested(sql);
+    emit executeRequested(sql, rollbackExplain);
     return true;
 }
 
 // Capture explicit export arguments without replaying an already executed result.
-bool PgSession::executeToFile(const QString &sql, const QString &path, bool excel, const QVector<int> &widths)
+bool PgSession::executeToFile(const QString &sql, const QString &path, bool excel, const QVector<int> &widths, bool rollbackExplain)
 {
     if (connectionState != Connected || busy || path.isEmpty()) return false;
     exportCancelled->store(false);
     busy = true;
     emit stateChanged();
-    emit exportRequested(sql, path, excel, widths);
+    emit exportRequested(sql, path, excel, widths, rollbackExplain);
     return true;
 }
 

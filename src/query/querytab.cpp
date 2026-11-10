@@ -4,6 +4,7 @@
 #include <QTimer>
 #include "results/cellviewer.h"
 #include "sqleditor.h"
+#include "database/sqlscript.h"
 #include "results/resultexporter.h"
 #include <QFileDialog>
 #include <QFileInfo>
@@ -20,6 +21,7 @@
 #include <QFontDatabase>
 #include <QHeaderView>
 #include <QHBoxLayout>
+#include <QGridLayout>
 #include <QKeyEvent>
 #include <QInputDialog>
 #include <QLabel>
@@ -142,11 +144,63 @@ QueryTab::QueryTab(QWidget *parent) : QWidget(parent)
     messages->setReadOnly(true);
     messages->setMaximumBlockCount(3000);
     output->addTab(messages, tr("Meldingen"));
-    plan = new QPlainTextEdit(output);
+    planPanel = new QWidget(output);
+    planPanel->setObjectName("executionPlanPanel");
+    auto *planLayout = new QVBoxLayout(planPanel);
+    planLayout->setContentsMargins(0, 0, 0, 0);
+    planControls = new QWidget(planPanel);
+    auto *planOptionsLayout = new QGridLayout(planControls);
+    planOptionsLayout->setContentsMargins(0, 0, 0, 0);
+    const QStringList optionNames = {"ANALYZE", "VERBOSE", "COSTS", "SETTINGS", "BUFFERS",
+                                     "WAL", "TIMING", "SUMMARY", "MEMORY", "GENERIC_PLAN"};
+    for (int i = 0; i < optionNames.size(); ++i) {
+        auto *option = new QCheckBox(optionNames.at(i), planControls);
+        option->setObjectName("explain" + optionNames.at(i));
+        option->setChecked(optionNames.at(i) == "COSTS" || optionNames.at(i) == "TIMING"
+                           || optionNames.at(i) == "SUMMARY");
+        explainOptions.append(option);
+        planOptionsLayout->addWidget(option, i / 5, i % 5);
+    }
+    auto *analyze = explainOptions.at(0);
+    auto *wal = explainOptions.at(5);
+    auto *timing = explainOptions.at(6);
+    auto *generic = explainOptions.at(9);
+    wal->setEnabled(false);
+    timing->setEnabled(false);
+    planFormat = new QComboBox(planControls);
+    planFormat->setObjectName("explainFormat");
+    planFormat->addItems({"TEXT", "JSON", "XML", "YAML"});
+    planSerialize = new QComboBox(planControls);
+    planSerialize->setObjectName("explainSerialize");
+    planSerialize->addItems({"NONE", "TEXT", "BINARY"});
+    planSerialize->setEnabled(false);
+    planOptionsLayout->addWidget(new QLabel("FORMAT", planControls), 2, 0);
+    planOptionsLayout->addWidget(planFormat, 2, 1);
+    planOptionsLayout->addWidget(new QLabel("SERIALIZE", planControls), 2, 2);
+    planOptionsLayout->addWidget(planSerialize, 2, 3);
+    auto *analyzeNotice = new QLabel(tr("ANALYZE voert de query echt uit; wijzigingen worden daarna teruggedraaid. Sequencewaarden en externe effecten kunnen wel blijven bestaan."), planPanel);
+    analyzeNotice->setWordWrap(true);
+    analyzeNotice->setVisible(false);
+    connect(analyze, &QCheckBox::toggled, this, [this, wal, timing, generic, analyzeNotice](bool enabled) {
+        if (enabled) generic->setChecked(false);
+        wal->setEnabled(enabled);
+        timing->setEnabled(enabled);
+        planSerialize->setEnabled(enabled);
+        analyzeNotice->setVisible(enabled);
+    });
+    connect(generic, &QCheckBox::toggled, this, [analyze](bool enabled) {
+        if (enabled) analyze->setChecked(false);
+    });
+    planLayout->addWidget(planControls);
+    planLayout->addWidget(analyzeNotice);
+    plan = new QPlainTextEdit(planPanel);
+    plan->setObjectName("executionPlanText");
     plan->setReadOnly(true);
     plan->setFont(sqlEditor->font());
     plan->setLineWrapMode(QPlainTextEdit::NoWrap);
-    output->addTab(plan, tr("Uitvoeringsplan"));
+    plan->setPlaceholderText(tr("F5 voert de selectie of het script uit met EXPLAIN. Bestaande EXPLAIN-opdrachten behouden hun eigen opties."));
+    planLayout->addWidget(plan, 1);
+    output->addTab(planPanel, tr("Uitvoeringsplan"));
     splitter->setSizes({350, 400});
     layout->addWidget(splitter, 1);
     connect(allResults, &QCheckBox::toggled, this, &QueryTab::allResultsChanged);
@@ -196,6 +250,7 @@ QueryTab::QueryTab(QWidget *parent) : QWidget(parent)
 }
 
 void QueryTab::showPlan() { output->setCurrentIndex(2); }
+bool QueryTab::planSelected() const { return output->currentWidget() == planPanel; }
 void QueryTab::setAllResults(bool enabled) { allResults->setChecked(enabled); }
 QString QueryTab::connectionId() const { return connections->currentData().toString(); }
 // Preserve an explicit missing target as disconnected instead of silently choosing another database.
@@ -236,6 +291,36 @@ QString QueryTab::sqlToExecute() const
     return selection.isEmpty() ? sqlEditor->toPlainText() : QString(selection).replace(QChar::ParagraphSeparator, '\n');
 }
 
+// Prefix every statement separately so a script cannot accidentally execute trailing SQL normally.
+// Explicit EXPLAIN statements retain the options already written by the user.
+QString QueryTab::executionSql(QString *error) const
+{
+    error->clear();
+    const auto sql = sqlToExecute();
+    if (!planSelected()) return sql;
+    const auto statements = SqlScript::split(sql, error);
+    if (!error->isEmpty()) return {};
+    QStringList options;
+    const bool analyze = explainOptions.first()->isChecked();
+    for (const auto *option : explainOptions) {
+        const auto name = option->text();
+        if ((name == "TIMING" || name == "WAL") && !analyze) continue;
+        // Newer server options are omitted when disabled, keeping default plans usable on PostgreSQL 15.
+        if ((name == "MEMORY" || name == "GENERIC_PLAN") && !option->isChecked()) continue;
+        options.append(name + (option->isChecked() ? " TRUE" : " FALSE"));
+    }
+    options.append("FORMAT " + planFormat->currentText());
+    if (analyze && planSerialize->currentText() != "NONE")
+        options.append("SERIALIZE " + planSerialize->currentText());
+    QStringList commands;
+    for (const auto &statement : statements) {
+        const auto prefix = statement.keyword == "EXPLAIN" ? QString() : "EXPLAIN (" + options.join(", ") + ")\n";
+        const auto annotation = !prefix.isEmpty() && !statement.name.isEmpty() ? "-- @resultaat: " + statement.name + '\n' : QString();
+        commands.append(annotation + prefix + statement.sql.trimmed());
+    }
+    return commands.join('\n');
+}
+
 // Reset output and freeze options while retaining user-adjusted column widths.
 void QueryTab::startExecution()
 {
@@ -245,13 +330,14 @@ void QueryTab::startExecution()
     showAll = allResults->isChecked();
     allResults->setEnabled(false);
     connections->setEnabled(false);
+    planControls->setEnabled(false);
     model->clear();
     applyColumnWidths();
     messages->clear();
     plan->clear();
     appendMessage(tr("Opdrachten worden afzonderlijk uitgevoerd; stop bij de eerste fout. Gebruik BEGIN / COMMIT voor een gezamenlijke transactie.\nDeze tab heeft een eigen sessie en transactie."));
     state->setText(tr("Bezig..."));
-    output->setCurrentIndex(0);
+    if (output->currentWidget() != planPanel) output->setCurrentIndex(0);
 }
 
 // Append the worker batch, restore widths and rebuild only affected heading/status spans.
@@ -267,7 +353,9 @@ void QueryTab::appendResult(const QueryResult &result)
         if (model->isHeading(row) && model->columnCount() > 1) table->setSpan(row, 0, 1, model->columnCount());
     if (result.finished) {
         appendMessage(QString("%1. %2: %3").arg(result.number).arg(result.title, result.status));
-        if (result.columns.size() == 1 && result.columns.first() == "QUERY PLAN") plan->setPlainText(model->lastPlan());
+        if (result.columns.size() == 1 && result.columns.first() == "QUERY PLAN") {
+            plan->appendPlainText(QString("%1. %2\n%3").arg(result.number).arg(result.title, model->lastPlan()));
+        }
     }
 }
 
@@ -281,6 +369,7 @@ void QueryTab::finishExecution(bool success, const QString &transaction)
     updateExportActions();
     allResults->setEnabled(true);
     connections->setEnabled(true);
+    planControls->setEnabled(true);
     state->setText((success ? tr("Gereed | ") : tr("Gestopt / fout | ")) + transaction);
     appendMessage(state->text());
 }

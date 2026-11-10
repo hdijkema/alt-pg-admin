@@ -25,7 +25,8 @@ class ReleaseAssetsTest(unittest.TestCase):
         self.packages = self.directory / "release"
         self.packages.mkdir()
         for name in ("alt-pg-admin-0.2.0-windows-x64.zip", "alt-pg-admin-0.2.0-windows-x64-setup.exe", "alt-pg-admin_0.2.0-debian12_amd64.deb",
-                     "alt-pg-admin_0.2.0-debian13_amd64.deb", "alt-pg-admin-0.2.0-linux-x86_64.flatpak",
+                     "alt-pg-admin_0.2.0-debian13_amd64.deb", "alt-pg-admin_0.2.0-debian12_arm64.deb",
+                     "alt-pg-admin_0.2.0-debian13_arm64.deb", "alt-pg-admin-0.2.0-linux-x86_64.flatpak",
                      "alt-pg-admin-0.2.0-macos-arm64.dmg"):
             (self.packages / name).write_bytes(b"test fixture")
         binaries = self.directory / "bin"
@@ -46,13 +47,13 @@ class ReleaseAssetsTest(unittest.TestCase):
         return subprocess.run(["bash", str(ROOT / "tools/publish-release.sh"), str(self.packages)],
                               cwd=self.directory, env=self.environment, capture_output=True, text=True)
 
-    def test_all_six_packages_are_attached(self):
+    def test_all_eight_packages_are_attached(self):
         self.git("tag", "v0.2.0")
         result = self.publish()
         self.assertEqual(result.returncode, 0, result.stderr)
         arguments = json.loads(self.log.read_text())
         self.assertEqual(arguments[:3], ["release", "create", "v0.2.0"])
-        self.assertEqual({Path(p).resolve() for p in arguments[3:9]}, {p.resolve() for p in self.packages.iterdir()})
+        self.assertEqual({Path(p).resolve() for p in arguments[3:11]}, {p.resolve() for p in self.packages.iterdir()})
         self.assertEqual(arguments[arguments.index("--target") + 1], self.git("rev-parse", "HEAD"))
 
     def test_missing_or_empty_package_blocks_publication(self):
@@ -70,6 +71,17 @@ class ReleaseAssetsTest(unittest.TestCase):
         (self.packages / 'alt-pg-admin-0.2.0-windows-x64-setup.exe').unlink()
         self.assertNotEqual(self.publish().returncode, 0)
         self.assertFalse(self.log.exists())
+
+    def test_missing_arm64_package_blocks_publication(self):
+        for debian in (12, 13):
+            with self.subTest(debian=debian):
+                asset = self.packages / f"alt-pg-admin_0.2.0-debian{debian}_arm64.deb"
+                asset.unlink()
+                result = self.publish()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(asset.name, result.stderr)
+                self.assertFalse(self.log.exists())
+                asset.write_bytes(b"test fixture")
 
     def test_missing_mac_dmg_blocks_publication(self):
         (self.packages / 'alt-pg-admin-0.2.0-macos-arm64.dmg').unlink()

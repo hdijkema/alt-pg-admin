@@ -167,8 +167,15 @@ columns. Separate result tabs are not created per statement.
   from stored results. They do not rerun SQL.
   Truncation is marked and requires confirmation before export. NULL appears as
   `NULL`; bytea uses hexadecimal `\x...` notation.
-- EXPLAIN output is included in the result overview. **Uitvoeringsplan** also
-  displays the latest available plan; **Meldingen** lists notices and errors.
+- With **Uitvoeringsplan** selected, F5/the execute action runs the selected SQL
+  or each statement in the script with EXPLAIN. Check the desired options there,
+  including ANALYZE, and select TEXT, JSON, XML or YAML output. ANALYZE defaults
+  off. Explicit EXPLAIN commands keep their written options; the editor is unchanged.
+  Plans remain visible after automatic rollback, including on failure/cancellation.
+  An existing transaction uses a savepoint to preserve earlier work. Sequence values
+  and external effects cannot always be rolled back. Newer EXPLAIN options require
+  a compatible PostgreSQL version. Normal result mode keeps ordinary SQL semantics.
+  EXPLAIN output is also included in the result overview; **Meldingen** lists notices and errors.
 
 The splitter handles ordinary/E-strings, double quotes, dollar quotes, line
 comments and nested block comments. It is not a complete PostgreSQL grammar
@@ -519,8 +526,11 @@ The Windows installer is configured and has local install/reinstall/uninstall
 validation. The macOS Apple Silicon job and DMG are configured for macOS 15 or newer
 and await their first native hosted validation; Intel is not configured.
 Linux packaging is configured in `.github/workflows/linux.yml`: native Debian 12/13
-packages and a Flatpak bundle. The Debian 12 build and package have been checked
-locally; Debian 13 and the full Flatpak build still need successful hosted validation.
+packages for amd64 and ARM64, plus an x86_64 Flatpak bundle. The ARM64 packages
+target Raspberry Pi systems with a 64-bit OS and matching Debian dependencies;
+32-bit armhf is not configured. The Debian 12 amd64 build and package have been
+checked locally; ARM64, Debian 13 and the full Flatpak build still need successful
+hosted validation. Raspberry Pi hardware has not been tested.
 The existing PostgreSQL downloader and database integration scripts remain Windows-specific.
 The Windows ZIP contains deployed Qt/PostgreSQL tools and app-local MSVC runtime
 DLLs, and passes a local startup smoke check. Clean-machine operation still needs

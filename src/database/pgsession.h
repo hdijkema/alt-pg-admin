@@ -29,11 +29,13 @@ public:
     void close();
     // Accept a script only while connected and idle. Returns whether it was queued,
     // not whether SQL succeeded; executionFinished supplies that result and transaction state.
-    bool execute(const QString &sql);
+    // rollbackExplain accepts only EXPLAIN statements and rolls them back after collecting results,
+    // including on error/cancel. An existing transaction is protected with a savepoint.
+    bool execute(const QString &sql, bool rollbackExplain = false);
     // Execute exactly once on this session, streaming all rows to a staged file before preview clipping.
     // Success publishes the file. Failed/cancelled SQL or export preserves an existing file;
     // SQL side effects/transactions retain ordinary PostgreSQL semantics.
-    bool executeToFile(const QString &sql, const QString &path, bool excel, const QVector<int> &widths = {});
+    bool executeToFile(const QString &sql, const QString &path, bool excel, const QVector<int> &widths = {}, bool rollbackExplain = false);
     // Apply role statements and a new password in one transaction. sql contains
     // no transaction commands or password. The worker builds a SCRAM verifier
     // with libpq before sending ALTER ROLE; plaintext never enters SQL/results.
@@ -53,8 +55,8 @@ signals:
     void disconnected();
     void openRequested(const QVariantMap &profile, const QString &password);
     void closeRequested();
-    void executeRequested(const QString &sql);
-    void exportRequested(const QString &sql, const QString &path, bool excel, const QVector<int> &widths);
+    void executeRequested(const QString &sql, bool rollbackExplain);
+    void exportRequested(const QString &sql, const QString &path, bool excel, const QVector<int> &widths, bool rollbackExplain);
     void roleChangeRequested(const QString &sql, const QString &role, const QString &password);
     void cancelRequested();
     void acknowledged();

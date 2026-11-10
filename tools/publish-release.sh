@@ -13,6 +13,8 @@ assets=(
     "$package_dir/alt-pg-admin-$version-windows-x64-setup.exe"
     "$package_dir/alt-pg-admin_$version-debian12_amd64.deb"
     "$package_dir/alt-pg-admin_$version-debian13_amd64.deb"
+    "$package_dir/alt-pg-admin_$version-debian12_arm64.deb"
+    "$package_dir/alt-pg-admin_$version-debian13_arm64.deb"
     "$package_dir/alt-pg-admin-$version-linux-x86_64.flatpak"
     "$package_dir/alt-pg-admin-$version-macos-arm64.dmg"
 )

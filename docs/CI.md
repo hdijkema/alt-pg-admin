@@ -61,14 +61,16 @@ Without a release override, the current development version is 0.1.0.
 
 The publishing job waits for Windows, Debian 12, Debian 13, Flatpak and macOS to succeed.
 It downloads only the package artifacts from that same workflow run, checks that
-all six expected versioned files are present and nonempty, and checks an existing
+all eight expected versioned files are present and nonempty, and checks an existing
 tag against the built commit. `tools/publish-release.sh` then uses `gh release create`
-with generated notes and all six assets:
+with generated notes and all eight assets:
 
 - `alt-pg-admin-0.2.0-windows-x64.zip`
 - `alt-pg-admin-0.2.0-windows-x64-setup.exe`
 - `alt-pg-admin_0.2.0-debian12_amd64.deb`
 - `alt-pg-admin_0.2.0-debian13_amd64.deb`
+- `alt-pg-admin_0.2.0-debian12_arm64.deb`
+- `alt-pg-admin_0.2.0-debian13_arm64.deb`
 - `alt-pg-admin-0.2.0-linux-x86_64.flatpak`
 - `alt-pg-admin-0.2.0-macos-arm64.dmg`
 
@@ -133,7 +135,10 @@ unsigned; clean-machine/hosted Windows acceptance still needs verification.
 ## Linux jobs
 
 `.github/workflows/linux.yml` is called by the main workflow and adds a Debian
-12/13 amd64 container matrix and a Flatpak x86_64 job. It can also be run manually
+12/13 container matrix for amd64 and ARM64, plus a Flatpak x86_64 job. ARM64 uses
+native `ubuntu-24.04-arm` runners and targets 64-bit Raspberry Pi systems with
+matching OS dependencies; 32-bit armhf builds are not configured. Package and
+report artifact names include the architecture. It can also be run manually
 for Linux-only builds, which do not publish a release. See [Linux packaging](LINUX-PACKAGING.md) for build/install commands,
 permissions, client-tool versions and validation limits.
 
@@ -151,7 +156,7 @@ Intel is not configured. Native execution awaits the first hosted run. See
   clean-machine checks before a public release; configure signing if needed.
 - macOS: confirm the first native build/DMG run and installed-app database/keychain
   behaviour; Developer ID signing/notarisation need later release configuration.
-- Linux: run the new Debian 13/Flatpak hosted jobs and validate database networking,
+- Linux: run the new ARM64 Debian and Debian 13/Flatpak hosted jobs and validate database networking,
   local sockets, backup/restore and credential storage on installed desktop packages.
 
 The macOS job is configured for Apple Silicon and is not yet validated natively.

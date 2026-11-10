@@ -18,6 +18,8 @@
 #include <QTextLayout>
 #include <QApplication>
 #include <QClipboard>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QFile>
 #include <QFontDatabase>
@@ -26,6 +28,7 @@
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTableView>
+#include <QTabWidget>
 #include <QTest>
 #include <QTimer>
 
@@ -66,6 +69,72 @@ SELECT $$waarde;$$;
         QFile example(QFINDTESTDATA("fixtures/performance-example.sql"));
         QVERIFY(example.open(QIODevice::ReadOnly));
         QCOMPARE(SqlScript::split(QString::fromUtf8(example.readAll()), &error).size(), 11);
+        QVERIFY(error.isEmpty());
+    }
+
+    void explainExecution()
+    {
+        QueryTab tab;
+        QString error;
+        const QString script = "-- @resultaat: Eerste\nSELECT ';';\n/* outer /* inner */ end */ SELECT 2;";
+        tab.editor()->setPlainText(script);
+        QCOMPARE(tab.executionSql(&error), script);
+        tab.showPlan();
+        auto statements = SqlScript::split(tab.executionSql(&error), &error);
+        QVERIFY(error.isEmpty());
+        QCOMPARE(statements.size(), 2);
+        QCOMPARE(statements.first().name, QString("Eerste"));
+        for (const auto &statement : statements) {
+            QCOMPARE(statement.keyword, QString("EXPLAIN"));
+            QVERIFY(statement.sql.contains("ANALYZE FALSE"));
+            QVERIFY(!statement.sql.contains("TIMING"));
+        }
+        auto *analyze = tab.findChild<QCheckBox *>("explainANALYZE");
+        auto *generic = tab.findChild<QCheckBox *>("explainGENERIC_PLAN");
+        auto *wal = tab.findChild<QCheckBox *>("explainWAL");
+        auto *format = tab.findChild<QComboBox *>("explainFormat");
+        auto *serialize = tab.findChild<QComboBox *>("explainSerialize");
+        QVERIFY(analyze && generic && wal && format && serialize);
+        QVERIFY(!analyze->isChecked());
+        QVERIFY(!wal->isEnabled());
+        analyze->setChecked(true);
+        QVERIFY(wal->isEnabled());
+        wal->setChecked(true);
+        format->setCurrentText("JSON");
+        serialize->setCurrentText("TEXT");
+        auto sql = tab.executionSql(&error);
+        QVERIFY(sql.contains("ANALYZE TRUE"));
+        QVERIFY(sql.contains("WAL TRUE"));
+        QVERIFY(sql.contains("FORMAT JSON"));
+        QVERIFY(sql.contains("SERIALIZE TEXT"));
+        generic->setChecked(true);
+        QVERIFY(!analyze->isChecked());
+        QVERIFY(!wal->isEnabled());
+        sql = tab.executionSql(&error);
+        QVERIFY(sql.contains("GENERIC_PLAN TRUE"));
+        QVERIFY(!sql.contains("WAL"));
+        QVERIFY(!sql.contains("SERIALIZE"));
+        analyze->setChecked(true);
+        QVERIFY(!generic->isChecked());
+
+        // A selection limits execution; explicit EXPLAIN keeps its written options, even after nested comments.
+        tab.editor()->setPlainText("SELECT 1;\n/* nested /* comment */ ok */ explain (COSTS OFF) SELECT 2;");
+        auto cursor = tab.editor()->textCursor();
+        cursor.setPosition(10);
+        cursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+        tab.editor()->setTextCursor(cursor);
+        QCOMPARE(tab.executionSql(&error), tab.sqlToExecute().trimmed());
+        tab.startExecution();
+        auto *output = tab.findChild<QTabWidget *>();
+        QCOMPARE(output->currentWidget()->objectName(), QString("executionPlanPanel"));
+        QVERIFY(!analyze->isEnabled());
+        tab.finishExecution(true, "idle");
+        QVERIFY(analyze->isEnabled());
+        tab.editor()->setPlainText("SELECT 'unterminated");
+        QVERIFY(tab.executionSql(&error).isEmpty());
+        QVERIFY(!error.isEmpty());
+        output->setCurrentIndex(0);
+        QCOMPARE(tab.executionSql(&error), tab.sqlToExecute());
         QVERIFY(error.isEmpty());
     }
 
@@ -351,6 +420,68 @@ SELECT $$waarde;$$;
         restored.setColumnWidths(tab.columnWidths());
         restored.appendResult(result);
         QCOMPARE(restored.findChild<QTableView *>("queryResults")->columnWidth(0), 333);
+    }
+
+    void explainRollback()
+    {
+        if (!qEnvironmentVariableIsSet("PGADM_TEST_PORT")) QSKIP("Requires disposable PostgreSQL 18.");
+        PgSession session;
+        QSignalSpy connected(&session, &PgSession::connected);
+        session.open(profile());
+        QTRY_COMPARE_WITH_TIMEOUT(connected.count(), 1, 5000);
+        ResultModel model;
+        connect(&session, &PgSession::resultReady, &model, [&](const QueryResult &result) { model.append(result, true); });
+        QSignalSpy finished(&session, &PgSession::executionFinished);
+        auto run = [&](const QString &sql, bool rollback = false) {
+            model.clear();
+            finished.clear();
+            if (!session.execute(sql, rollback) || !finished.wait(10000)) return false;
+            return finished.first().first().toBool();
+        };
+        QVERIFY(run("CREATE TEMP TABLE explain_effects (value integer); INSERT INTO explain_effects VALUES (1);"));
+        QVERIFY(run("EXPLAIN (ANALYZE, FORMAT JSON) UPDATE explain_effects SET value = 2;", true));
+        QVERIFY(model.lastPlan().contains("Actual Rows"));
+        QCOMPARE(model.results().size(), 1);
+        QVERIFY(!session.hasOpenTransaction());
+        QVERIFY(run("SELECT value FROM explain_effects;"));
+        QCOMPARE(model.results().first().rows.first().first().text, QString("1"));
+
+        // A savepoint keeps earlier uncommitted work and leaves the outer transaction open.
+        QVERIFY(run("BEGIN; UPDATE explain_effects SET value = 3; SAVEPOINT pgadm_explain;"));
+        QVERIFY(run("EXPLAIN ANALYZE UPDATE explain_effects SET value = 4;", true));
+        QVERIFY(session.hasOpenTransaction());
+        QVERIFY(run("SELECT value FROM explain_effects;"));
+        QCOMPARE(model.results().first().rows.first().first().text, QString("3"));
+        QVERIFY(run("RELEASE SAVEPOINT pgadm_explain;"));
+        QVERIFY(!run("EXPLAIN ANALYZE UPDATE explain_effects SET value = 5; EXPLAIN SELECT 1/0;", true));
+        QVERIFY(session.hasOpenTransaction());
+        QVERIFY(run("SELECT value FROM explain_effects;"));
+        QCOMPARE(model.results().first().rows.first().first().text, QString("3"));
+        QVERIFY(run("ROLLBACK;"));
+
+        QVERIFY(!run("EXPLAIN ANALYZE UPDATE explain_effects SET value = 6; EXPLAIN SELECT 1/0;", true));
+        QVERIFY(!session.hasOpenTransaction());
+        QTimer::singleShot(200, &session, &PgSession::cancel);
+        QVERIFY(!run("EXPLAIN ANALYZE UPDATE explain_effects SET value = 7; EXPLAIN ANALYZE SELECT pg_sleep(10);", true));
+        QVERIFY(!session.hasOpenTransaction());
+        QVERIFY(run("SELECT value FROM explain_effects;"));
+        QCOMPARE(model.results().first().rows.first().first().text, QString("1"));
+        QVERIFY(!run("UPDATE explain_effects SET value = 8;", true));
+
+        // Export retains the plan but never includes internal BEGIN/ROLLBACK results.
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        finished.clear();
+        model.clear();
+        const auto destination = directory.filePath("plan.csv");
+        QVERIFY(session.executeToFile("EXPLAIN ANALYZE UPDATE explain_effects SET value = 9;", destination, false, {}, true));
+        QVERIFY(finished.wait(10000));
+        QVERIFY(finished.first().first().toBool());
+        QFile exported(destination);
+        QVERIFY(exported.open(QIODevice::ReadOnly));
+        QVERIFY(exported.readAll().contains("QUERY PLAN"));
+        QVERIFY(run("SELECT value FROM explain_effects;"));
+        QCOMPARE(model.results().first().rows.first().first().text, QString("1"));
     }
 
     void multipleQueriesAndPlans()

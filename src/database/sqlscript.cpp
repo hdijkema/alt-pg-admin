@@ -10,6 +10,7 @@ QVector<SqlStatement> SqlScript::split(const QString &sql, QString *error)
     int start = 0;
     bool hasSql = false;
     QString name;
+    QString keyword;
     auto identifier = [](QChar c) { return c.isLetterOrNumber() || c == '_' || c == '$'; };
     for (int i = 0; i < sql.size();) {
         const auto c = sql.at(i);
@@ -38,10 +39,11 @@ QVector<SqlStatement> SqlScript::split(const QString &sql, QString *error)
             continue;
         }
         if (c == ';') {
-            if (hasSql) statements.append({sql.mid(start, i - start + 1), name});
+            if (hasSql) statements.append({sql.mid(start, i - start + 1), name, keyword});
             start = ++i;
             hasSql = false;
             name.clear();
+            keyword.clear();
             continue;
         }
         if (c == '\'' || c == '"') {
@@ -76,9 +78,14 @@ QVector<SqlStatement> SqlScript::split(const QString &sql, QString *error)
                 continue;
             }
         }
+        if (!hasSql && c.isLetter()) {
+            int end = i + 1;
+            while (end < sql.size() && identifier(sql.at(end))) ++end;
+            keyword = sql.mid(i, end - i).toUpper();
+        }
         hasSql = true;
         ++i;
     }
-    if (hasSql) statements.append({sql.mid(start), name});
+    if (hasSql) statements.append({sql.mid(start), name, keyword});
     return statements;
 }

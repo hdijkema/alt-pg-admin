@@ -1447,6 +1447,14 @@ Backend PID: %6</translation>
   <context>
     <name>PgConnection</name>
     <message>
+      <source>Uitvoeringsplan accepteert alleen EXPLAIN-opdrachten.</source>
+      <translation>Execution plan accepts only EXPLAIN statements.</translation>
+    </message>
+    <message>
+      <source>Herstel eerst de open transactie met ROLLBACK voordat je een uitvoeringsplan opvraagt.</source>
+      <translation>Recover the open transaction with ROLLBACK before requesting an execution plan.</translation>
+    </message>
+    <message>
       <location filename="../src/database/pgsession.cpp" line="26" />
       <source>Verbindingstime-out. Controleer host, poort en netwerk.</source>
       <translation>Connection timed out. Check the host, port and network.</translation>
@@ -1660,6 +1668,14 @@ verify-ca / verify-full use libpq certificate settings.</translation>
   </context>
   <context>
     <name>QueryTab</name>
+    <message>
+      <source>ANALYZE voert de query echt uit; wijzigingen worden daarna teruggedraaid. Sequencewaarden en externe effecten kunnen wel blijven bestaan.</source>
+      <translation>ANALYZE actually executes the query; changes are rolled back afterwards. Sequence values and external effects may persist.</translation>
+    </message>
+    <message>
+      <source>F5 voert de selectie of het script uit met EXPLAIN. Bestaande EXPLAIN-opdrachten behouden hun eigen opties.</source>
+      <translation>F5 runs the selection or script with EXPLAIN. Existing EXPLAIN statements keep their own options.</translation>
+    </message>
     <message>
       <location filename="../src/query/querytab.cpp" line="42" />
       <source>Verbinding:</source>
