@@ -1,7 +1,11 @@
 cmake_minimum_required(VERSION 3.24)
 
+#########################################################################################################################
+# ALT_PG_ADMIN version 
+#########################################################################################################################
+
 set(PGADM_RELEASE_VERSION "" CACHE STRING "Release version (major.minor.patch); empty uses the development version")
-set(PGADM_VERSION "0.1.0")
+set(PGADM_VERSION "0.3.1")
 if(NOT PGADM_RELEASE_VERSION STREQUAL "")
     if(NOT PGADM_RELEASE_VERSION MATCHES "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")
         message(FATAL_ERROR "PGADM_RELEASE_VERSION must have the form major.minor.patch")
@@ -10,12 +14,25 @@ if(NOT PGADM_RELEASE_VERSION STREQUAL "")
 endif()
 project(pgadmin_qt VERSION ${PGADM_VERSION} LANGUAGES C CXX)
 
+
+#########################################################################################################################
+# QT stuff
+#########################################################################################################################
+
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+#########################################################################################################################
+# C++
+#########################################################################################################################
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+#########################################################################################################################
+# Library dependencies
+#########################################################################################################################
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network Concurrent)
@@ -70,7 +87,15 @@ if(MSVC)
     target_compile_options(qtxlsxwriter PRIVATE /utf-8 /W4)
 endif()
 
+#########################################################################################################################
+# Translations
+#########################################################################################################################
+
 include(cmake/Translations.cmake)
+
+#########################################################################################################################
+# Project sources
+#########################################################################################################################
 
 set(PROJECT_SOURCES
         ${PGADM_TRANSLATION_RESOURCE}
@@ -148,6 +173,10 @@ else()
     endif()
 endif()
 
+#########################################################################################################################
+# Build specs
+#########################################################################################################################
+
 target_link_libraries(pgadmin_qt PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
 target_include_directories(pgadmin_qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(pgadmin_qt PRIVATE PGADM_APP_VERSION="${PROJECT_VERSION}")
@@ -185,6 +214,10 @@ endif()
 if(MSVC)
     target_compile_options(pgadmin_qt PRIVATE /utf-8 /W4)
 endif()
+
+#########################################################################################################################
+# Testing
+#########################################################################################################################
 
 option(PGADM_BUILD_TESTS "Build PostgreSQL connection tests" OFF)
 if(PGADM_BUILD_TESTS)
@@ -258,6 +291,9 @@ set_target_properties(pgadmin_qt PROPERTIES
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
 )
+#########################################################################################################################
+# Creating executables
+#########################################################################################################################
 
 include(GNUInstallDirs)
 if(WIN32)
