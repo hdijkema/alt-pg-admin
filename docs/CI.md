@@ -1,8 +1,9 @@
 # GitHub Actions builds
 
-GitHub Actions is the intended build service for distribution. The first configured
-job is Windows x64 in `.github/workflows/build.yml`. It runs on pushes, pull
-requests and manual dispatches, with read-only repository permissions. The workflow
+GitHub Actions is the intended build service for distribution. The main workflow is `.github/workflows/build.yml`. It resolves the version once,
+then builds Windows x64 and calls the reusable Linux workflow for Debian 12/13
+and Flatpak. It runs on pushes, pull requests and manual dispatches, with read-only
+build permissions. The workflow
 belongs at the root of the `alt-pg-admin` Git repository.
 The separate release-publishing job has `contents: write`; the build job stays read-only.
 
@@ -39,7 +40,7 @@ are excluded. Ordinary branch/PR builds produce Actions artifacts only.
 
 ## Versioned releases
 
-There are two explicit ways to publish a release after a successful Windows build:
+There are two explicit ways to publish a release after all platform builds succeed:
 
 - Push a numeric tag such as `v0.2.0`.
 - Open Actions > Release build > Run workflow, select the source branch
@@ -51,19 +52,30 @@ versions fail before dependency downloads. A manual run on a tag must request
 that same tag's version. PRs and ordinary branch pushes never publish a release.
 
 The version becomes `PGADM_RELEASE_VERSION` in CMake, the application/About version,
-and the archive name, e.g. `alt-pg-admin-0.2.0-windows-x64.zip`. The startup smoke
+and each platform package, including the embedded Flatpak application version.
+For example: `alt-pg-admin-0.2.0-windows-x64.zip`. The startup smoke
 report verifies the executable version before a versioned archive is created.
 Without a release override, the current development version is 0.1.0.
 
-The publishing job downloads the successful build artifact, checks an existing
-tag against the built commit, then uses `gh release create` with generated release
-notes and the ZIP asset. A manual release creates a missing tag at that commit.
+The publishing job waits for Windows, Debian 12, Debian 13 and Flatpak to succeed.
+It downloads only the package artifacts from that same workflow run, checks that
+all four expected versioned files are present and nonempty, and checks an existing
+tag against the built commit. `tools/publish-release.sh` then uses `gh release create`
+with generated notes and all four assets:
+
+- `alt-pg-admin-0.2.0-windows-x64.zip`
+- `alt-pg-admin_0.2.0-debian12_amd64.deb`
+- `alt-pg-admin_0.2.0-debian13_amd64.deb`
+- `alt-pg-admin-0.2.0-linux-x86_64.flatpak`
+
+Reports are retained as Actions artifacts and are not attached to releases. A manual release creates a missing tag at that commit.
 Existing releases are not overwritten; use a new version for a new release.
 All action runtimes, including download-artifact v7, use Node.js 24.
 
 The release workflow has been checked locally with actionlint and the resolver's
-positive/negative cases (`tests/test-release-version.ps1`). Publication itself has
-not been tested or performed from this workspace.
+positive/negative cases (`tests/test-release-version.ps1`). The cross-platform release helpers also pass local tests with a fake GitHub CLI,
+including missing/empty packages, mismatched tags, and tags on different commits.
+Publication itself has not been performed from this workspace.
 On 10 November 2026, a Release build and versioned 0.1.0 ZIP passed the startup
 version check and ZIP CRC check. Packaging with a deliberately different version
 was rejected. PostgreSQL integration tests were not run for these workflow changes.
@@ -92,9 +104,9 @@ and the complete hosted job still need their first GitHub run.
 
 ## Linux jobs
 
-`.github/workflows/linux.yml` adds a Debian 12/13 amd64 container matrix and a
-Flatpak x86_64 job. Each produces an installable Actions artifact, without publishing
-a release. See [Linux packaging](LINUX-PACKAGING.md) for build/install commands,
+`.github/workflows/linux.yml` is called by the main workflow and adds a Debian
+12/13 amd64 container matrix and a Flatpak x86_64 job. It can also be run manually
+for Linux-only builds, which do not publish a release. See [Linux packaging](LINUX-PACKAGING.md) for build/install commands,
 permissions, client-tool versions and validation limits.
 
 ## Remaining platform work
@@ -109,5 +121,4 @@ permissions, client-tool versions and validation limits.
 
 The macOS job is not configured yet. Linux jobs are configured; Debian 12 has local
 build/package validation, while Debian 13 and Flatpak still need hosted validation. Keep platform scripts
-usable locally, and have each Actions job call those scripts. Add versioned release
-uploads after packages and their platform checks are ready.
+usable locally, and have each Actions job call those scripts. Cross-platform release uploads are configured and wait for every platform build.

@@ -508,8 +508,8 @@ Packaging checks startup with isolated settings. The shared build and ZIP packag
 scripts have been checked locally; workflow updates still need a GitHub run.
 See [GitHub Actions builds](docs/CI.md) for commands, artifacts and limits.
 Pushing a tag such as `v0.2.0`, or supplying a version in a manual workflow run,
-publishes a GitHub Release with the versioned portable ZIP after successful
-packaging. The version also appears in the application. Branch/PR builds only
+publishes a GitHub Release with the versioned Windows ZIP, Debian 12/13 packages
+and Flatpak bundle after all platform builds and package checks succeed. The version also appears in the application. Branch/PR builds only
 produce Actions artifacts. Publication still needs validation on GitHub.
 The Inno Setup installer and macOS app bundle/DMG remain to be implemented.
 Linux packaging is configured in `.github/workflows/linux.yml`: native Debian 12/13

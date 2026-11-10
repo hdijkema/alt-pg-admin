@@ -18,19 +18,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  windows:
-    name: Windows x64 Release
-    runs-on: windows-2022
-    timeout-minutes: 60
+  version:
+    name: Resolve release version
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       archive: ${{ steps.version.outputs.archive }}
       publish: ${{ steps.version.outputs.publish }}
-    env:
-      PGADM_QT_ROOT: ${{ github.workspace }}/build/Qt/6.11.1/msvc2022_64
-      PGADM_CMAKE: cmake
-      PGADM_NINJA: ninja
     steps:
       - uses: actions/checkout@v6
         with:
@@ -46,6 +41,22 @@ jobs:
           "tag=$($release.Tag)" >> $env:GITHUB_OUTPUT
           "archive=$($release.Archive)" >> $env:GITHUB_OUTPUT
           "publish=$($release.Publish.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Check release packaging helpers
+        run: python3 tests/test-release-assets.py
+
+  windows:
+    needs: version
+    name: Windows x64 Release
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      PGADM_QT_ROOT: ${{ github.workspace }}/build/Qt/6.11.1/msvc2022_64
+      PGADM_CMAKE: cmake
+      PGADM_NINJA: ninja
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -62,18 +73,18 @@ jobs:
       - name: Build Release and deploy Qt
         shell: cmd
         env:
-          PGADM_RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          PGADM_RELEASE_VERSION: ${{ needs.version.outputs.version }}
         run: build-release.cmd -DPGADM_BUILD_TESTS=OFF "-DPGADM_RELEASE_VERSION=%PGADM_RELEASE_VERSION%"
       - name: Package portable ZIP
         shell: pwsh
         env:
-          PGADM_RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          PGADM_RELEASE_VERSION: ${{ needs.version.outputs.version }}
         run: ./tools/package-windows.ps1 -QtRoot $env:PGADM_QT_ROOT -Version $env:PGADM_RELEASE_VERSION
       - name: Upload portable build
         uses: actions/upload-artifact@v6
         with:
           name: alt-pg-admin-windows-x64
-          path: dist/${{ steps.version.outputs.archive }}
+          path: dist/${{ needs.version.outputs.archive }}
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -86,10 +97,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  linux:
+    name: Linux packages
+    needs: version
+    uses: ./.github/workflows/linux.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
   release:
     name: Publish versioned release
-    needs: windows
-    if: needs.windows.outputs.publish == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_type == 'tag'))
+    needs: [version, windows, linux]
+    if: needs.version.outputs.publish == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_type == 'tag'))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -100,21 +118,13 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v7
         with:
-          name: alt-pg-admin-windows-x64
+          pattern: alt-pg-admin-*
+          merge-multiple: true
           path: release
-      - name: Publish release and attach ZIP
+      - name: Publish release with all platform packages
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.windows.outputs.tag }}
-          RELEASE_ARCHIVE: ${{ needs.windows.outputs.archive }}
-        run: |
-          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
-            tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
-            if [ "$tag_commit" != "$(git rev-parse HEAD)" ]; then
-              echo "The existing release tag points to a different commit."
-              exit 1
-            fi
-          fi
-          gh release create "$RELEASE_TAG" "release/$RELEASE_ARCHIVE" \
-            --target "$(git rev-parse HEAD)" --title "alt-pg-admin $RELEASE_TAG" --generate-notes
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: ./tools/publish-release.sh release

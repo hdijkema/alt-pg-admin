@@ -1,16 +1,27 @@
 name: Linux packages
 
 on:
-  push:
-  pull_request:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Validated numeric release version; empty builds development packages'
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version, e.g. 0.2.0 (build only; does not publish)'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: linux-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: linux-${{ github.workflow }}-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: false
 
 jobs:
   debian:
@@ -35,6 +46,8 @@ jobs:
           persist-credentials: false
       - name: Build, test and package
         shell: bash
+        env:
+          PGADM_RELEASE_VERSION: ${{ inputs.version }}
         run: ./tools/build-debian.sh
       - name: Install and check the actual package
         shell: bash
@@ -77,9 +90,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+      - name: Set Flatpak application version
+        env:
+          PGADM_RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          python3 tools/prepare-flatpak.py --version "$PGADM_RELEASE_VERSION" \
+            --output packaging/flatpak/build.json
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          manifest-path: packaging/flatpak/io.github.hdijkema.AltPgAdmin.json
+          manifest-path: packaging/flatpak/build.json
           bundle: alt-pg-admin-x86_64.flatpak
           artifact-name: alt-pg-admin-flatpak-x86_64
           upload-artifact: false
@@ -97,10 +116,16 @@ jobs:
           flatpak run --command=sh io.github.hdijkema.AltPgAdmin -ec \
             'for tool in pg_dump pg_restore psql createdb dropdb; do "$tool" --version; done'
           flatpak info --show-permissions io.github.hdijkema.AltPgAdmin
+      - name: Name Flatpak package
+        env:
+          PGADM_RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p dist
+          mv alt-pg-admin-x86_64.flatpak "dist/alt-pg-admin${PGADM_RELEASE_VERSION:+-$PGADM_RELEASE_VERSION}-linux-x86_64.flatpak"
       - uses: actions/upload-artifact@v6
         with:
           name: alt-pg-admin-flatpak-x86_64
-          path: alt-pg-admin-x86_64.flatpak
+          path: dist/*.flatpak
           if-no-files-found: error
           compression-level: 0
           retention-days: 14

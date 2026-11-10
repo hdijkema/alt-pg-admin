@@ -1,6 +1,8 @@
 # Linux packages
 
-`.github/workflows/linux.yml` builds on pushes, pull requests and manual runs.
+The main `.github/workflows/build.yml` calls `.github/workflows/linux.yml` on
+pushes and pull requests, and for manual release builds. The Linux workflow can
+also be run directly for a Linux-only build.
 It produces three downloadable Actions artifacts, retained for 14 days:
 
 | Artifact | Contents |
@@ -9,9 +11,13 @@ It produces three downloadable Actions artifacts, retained for 14 days:
 | `alt-pg-admin-debian13-amd64` | A `.deb` built against Debian 13's Qt and libpq |
 | `alt-pg-admin-flatpak-x86_64` | An installable `.flatpak` bundle |
 
-These jobs have read-only repository permissions and do not publish to a package
-repository, Flathub or GitHub Releases. The existing Windows release workflow is
-independent. Linux artifacts use the CMake development version by default.
+The build jobs have read-only repository permissions and do not publish to a
+package repository or Flathub. For a numeric version tag such as `v0.2.0`, or a
+manual main workflow run with version `0.2.0`, all platforms use that same version
+and the main release job attaches the Windows ZIP, both `.deb` files and Flatpak
+to one GitHub Release. The release job waits for every platform build to succeed.
+Ordinary branches/PRs and direct manual Linux-only runs produce Actions artifacts.
+An empty version uses the CMake development version.
 
 ## Native Debian packages
 
@@ -54,7 +60,8 @@ The manifest is `packaging/flatpak/io.github.hdijkema.AltPgAdmin.json`. It uses 
 KDE 6.10 runtime and includes PostgreSQL 18.6 client tools and libpq. Only client
 libraries/tools are installed; no database service is included. QtKeychain, zlib
 and libxlsxwriter use the same versions and hashes as the normal CMake build.
-All sources are downloaded before compilation; FetchContent is given local source
+`tools/prepare-flatpak.py` generates the CI manifest with the requested CMake
+version without changing the checked-in manifest. All sources are downloaded before compilation; FetchContent is given local source
 directories, so compilation does not require network access in the build sandbox.
 
 The installed application remains a Flatpak sandbox, with explicit access to:
@@ -76,11 +83,12 @@ Settings remain in the Flatpak's per-application XDG directory; native profiles
 are not automatically imported. On Linux, Secret Service/KWallet must be available
 in the user's desktop session to remember passwords; plaintext fallback stays off.
 
-Install the CI bundle with Flathub configured for the runtime:
+Install the CI bundle with Flathub configured for the runtime (versioned builds
+add the version to the filename):
 
 ```sh
 flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install --user ./alt-pg-admin-x86_64.flatpak
+flatpak install --user ./alt-pg-admin-linux-x86_64.flatpak
 flatpak run io.github.hdijkema.AltPgAdmin
 ```
 
@@ -89,7 +97,7 @@ Local build with `flatpak` and `flatpak-builder` installed:
 ```sh
 flatpak-builder --user --install-deps-from=flathub --force-clean --repo=build/flatpak-repo \
   build/flatpak-app packaging/flatpak/io.github.hdijkema.AltPgAdmin.json
-flatpak build-bundle build/flatpak-repo dist/alt-pg-admin-x86_64.flatpak \
+flatpak build-bundle build/flatpak-repo dist/alt-pg-admin-linux-x86_64.flatpak \
   io.github.hdijkema.AltPgAdmin
 ```
 
