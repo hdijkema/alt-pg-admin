@@ -86,7 +86,7 @@ def package(build: Path, qt: Path, pg: Path, requested_version: str) -> None:
             continue
         linked_binaries.append(file)
         file.chmod(file.stat().st_mode | 0o200)
-        run(['lipo', '-verify_arch', 'arm64', file])
+        run(['lipo', file, '-verify_arch', 'arm64'])
         load_commands = subprocess.check_output(['otool', '-l', str(file)], text=True)
         rpaths = re.findall(r'cmd LC_RPATH\s+cmdsize \d+\s+path (.*?) \(offset', load_commands)
         for path in dict.fromkeys(rpaths):

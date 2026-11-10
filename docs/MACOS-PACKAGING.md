@@ -33,6 +33,12 @@ signed and verified. Developer ID signing and Apple notarisation are not configu
 and require later Apple release credentials. CI success does not establish
 Gatekeeper acceptance for a quarantined Internet download.
 
+The architecture check uses `lipo <file> -verify_arch arm64`: the file precedes
+the variable-length architecture list, so its pathname is not parsed as an
+additional architecture. The hosted log on 10 November confirmed compilation
+and Qt deployment; packaging stopped at this argument-order error before signing
+or DMG creation. Those later stages still need a successful native run.
+
 The DMG contains the app and an Applications shortcut for drag-and-drop installation.
 Packaging verifies and mounts the actual DMG read-only, checks native startup,
 version and icon rendering in all three languages with isolated settings and a
