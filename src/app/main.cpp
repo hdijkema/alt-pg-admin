@@ -4,6 +4,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QIcon>
+#include <QDebug>
 #include <QDir>
 #include <QLibraryInfo>
 #include <QSettings>
@@ -57,6 +58,7 @@ int main(int argc, char *argv[])
     if (a.arguments().contains("--startup-check")) {
         QTimer::singleShot(0, &w, [&] {
             if (a.windowIcon().pixmap(32, 32).isNull()) {
+                qCritical("Application icon could not be rendered. Check the Qt SVG/image plugins.");
                 a.exit(1);
                 return;
             }

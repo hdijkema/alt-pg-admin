@@ -513,13 +513,14 @@ scripts have been checked locally; workflow updates still need a GitHub run.
 See [GitHub Actions builds](docs/CI.md) for commands, artifacts and limits.
 Pushing a tag such as `v0.2.0`, or supplying a version in a manual workflow run,
 publishes a GitHub Release with the versioned Windows ZIP and Inno Setup installer, Debian 12/13 packages
-and Flatpak bundle after all platform builds and package checks succeed. The version also appears in the application. Branch/PR builds only
+and the Flatpak and Apple Silicon macOS DMG after all platform builds and package checks succeed. The version also appears in the application. Branch/PR builds only
 produce Actions artifacts. Publication still needs validation on GitHub.
 The Windows installer is configured and has local install/reinstall/uninstall
-validation; the macOS app bundle/DMG remains to be implemented.
+validation. The macOS Apple Silicon job and DMG are configured for macOS 15 or newer
+and await their first native hosted validation; Intel is not configured.
 Linux packaging is configured in `.github/workflows/linux.yml`: native Debian 12/13
 packages and a Flatpak bundle. The Debian 12 build and package have been checked
-locally; Debian 13 and the full Flatpak build still need their first hosted run.
+locally; Debian 13 and the full Flatpak build still need successful hosted validation.
 The existing PostgreSQL downloader and database integration scripts remain Windows-specific.
 The Windows ZIP contains deployed Qt/PostgreSQL tools and app-local MSVC runtime
 DLLs, and passes a local startup smoke check. Clean-machine operation still needs

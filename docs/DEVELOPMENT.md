@@ -20,6 +20,9 @@ RC file; macOS bundles the generated ICNS as its bundle icon. The checked-in ICO
 and ICNS are produced from the SVG by `tools/generate-app-icons.py` using Inkscape;
 normal builds do not run that tool. The packaging startup check also renders a
 32-pixel application icon to detect missing resources/image plugins.
+Use the generator's `--icns-only` option when preserving a separately supplied
+Windows ICO. The Windows RC object explicitly depends on the ICO file, so an
+artwork update refreshes the native executable resource during incremental builds.
 Build/test/package scripts and output paths remain at their existing locations.
 
 ## Startup and connection ownership
@@ -300,6 +303,17 @@ Missing roles must be reviewed/created before starting a fresh restore. Profiles
 cannot be edited while their role window is open.
 
 ## Documentation and validation
+
+`tools/build-macos.sh` and `tools/package-macos.py` define the Apple Silicon build
+and DMG flow. Client tools are bundled beside the executable; dylibbundler deploys
+their libraries and macdeployqt deploys Qt. Packaging checks Mach-O dependencies
+and architecture, removes development rpaths, ad-hoc signs and mounts/tests the
+DMG before export. `MACOS-PACKAGING.md` records native validation and signing limits.
+Release assembly requires six platform packages, including the DMG.
+
+Debian 13 separates SVG codecs into `qt6-svg-plugins`; the build job and runtime
+package declare it explicitly. Debian 12 keeps the plugins in libqt6svg6. Debian
+startup checks use UTF-8 and diagnose an icon-rendering failure on stderr.
 
 Release metadata is resolved by `tools/release-version.ps1` for numeric tags or
 explicit manual version input. CMake's `PGADM_RELEASE_VERSION` overrides the

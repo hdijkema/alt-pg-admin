@@ -5,3 +5,4 @@
 /third_party/
 /.qtcreator/
 CMakeLists.txt.user*
+__pycache__/

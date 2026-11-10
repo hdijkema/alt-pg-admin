@@ -29,6 +29,16 @@ To regenerate them after changing the SVG, run:
 py -3 tools/generate-app-icons.py
 ```
 
+If the SVG and Windows ICO were supplied together, preserve the supplied ICO and
+update only the macOS derivative:
+
+```powershell
+py -3 tools/generate-app-icons.py --icns-only
+```
+
+The Windows resource explicitly depends on the ICO so incremental builds refresh
+the executable icon as well as Qt's embedded icon resources.
+
 The generator uses Inkscape (or an explicit `--inkscape` path) and Python's standard
 library. Normal builds use the checked-in assets and need neither Inkscape nor
 additional Python packages. Native macOS/Linux icon display still needs validation

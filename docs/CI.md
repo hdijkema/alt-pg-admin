@@ -1,8 +1,8 @@
 # GitHub Actions builds
 
 GitHub Actions is the intended build service for distribution. The main workflow is `.github/workflows/build.yml`. It resolves the version once,
-then builds Windows x64 and calls the reusable Linux workflow for Debian 12/13
-and Flatpak. It runs on pushes, pull requests and manual dispatches, with read-only
+then builds Windows x64 and calls reusable workflows for Debian 12/13, Flatpak
+and an Apple Silicon macOS DMG. It runs on pushes, pull requests and manual dispatches, with read-only
 build permissions. The workflow
 belongs at the root of the `alt-pg-admin` Git repository.
 The separate release-publishing job has `contents: write`; the build job stays read-only.
@@ -59,17 +59,18 @@ For example: `alt-pg-admin-0.2.0-windows-x64.zip`. The startup smoke
 report verifies the executable version before a versioned archive is created.
 Without a release override, the current development version is 0.1.0.
 
-The publishing job waits for Windows, Debian 12, Debian 13 and Flatpak to succeed.
+The publishing job waits for Windows, Debian 12, Debian 13, Flatpak and macOS to succeed.
 It downloads only the package artifacts from that same workflow run, checks that
-all five expected versioned files are present and nonempty, and checks an existing
+all six expected versioned files are present and nonempty, and checks an existing
 tag against the built commit. `tools/publish-release.sh` then uses `gh release create`
-with generated notes and all five assets:
+with generated notes and all six assets:
 
 - `alt-pg-admin-0.2.0-windows-x64.zip`
 - `alt-pg-admin-0.2.0-windows-x64-setup.exe`
 - `alt-pg-admin_0.2.0-debian12_amd64.deb`
 - `alt-pg-admin_0.2.0-debian13_amd64.deb`
 - `alt-pg-admin-0.2.0-linux-x86_64.flatpak`
+- `alt-pg-admin-0.2.0-macos-arm64.dmg`
 
 Reports are retained as Actions artifacts and are not attached to releases. A manual release creates a missing tag at that commit.
 Existing releases are not overwritten; use a new version for a new release.
@@ -125,7 +126,7 @@ are not deleted on uninstall. The installer does not forcibly close a running ap
 fixture, checks native startup, reinstalls to restore a missing DLL, and uninstalls.
 It verifies that separate settings and an untracked SQL file survive. It never
 uses the production AppId, production settings paths or existing password entries.
-On 10 November 2026 these checks passed locally, together with all seven release
+On 10 November 2026 these checks passed locally, together with all eight release
 assembly checks and workflow actionlint validation. The generated installer is
 unsigned; clean-machine/hosted Windows acceptance still needs verification.
 
@@ -136,16 +137,24 @@ unsigned; clean-machine/hosted Windows acceptance still needs verification.
 for Linux-only builds, which do not publish a release. See [Linux packaging](LINUX-PACKAGING.md) for build/install commands,
 permissions, client-tool versions and validation limits.
 
+## macOS job
+
+`.github/workflows/macos.yml` builds an Apple Silicon Release app and DMG with the
+shared version, Qt, PostgreSQL client tools and their runtime libraries. It checks
+the actual mounted DMG before uploading it. The initial target is macOS 15 or newer;
+Intel is not configured. Native execution awaits the first hosted run. See
+[macOS packaging](MACOS-PACKAGING.md) for deployment and signing limits.
+
 ## Remaining platform work
 
 - Windows: validate the configured installer job on a hosted runner and perform
   clean-machine checks before a public release; configure signing if needed.
-- macOS: add a separate native build job with matching Qt/PostgreSQL dependencies,
-  tests, deployed app bundle and DMG. Select supported architectures explicitly;
-  signing/notarisation require later release configuration.
+- macOS: confirm the first native build/DMG run and installed-app database/keychain
+  behaviour; Developer ID signing/notarisation need later release configuration.
 - Linux: run the new Debian 13/Flatpak hosted jobs and validate database networking,
   local sockets, backup/restore and credential storage on installed desktop packages.
 
-The macOS job is not configured yet. Linux jobs are configured; Debian 12 has local
+The macOS job is configured for Apple Silicon and is not yet validated natively.
+Linux jobs are configured; Debian 12 has local
 build/package validation, while Debian 13 and Flatpak still need hosted validation. Keep platform scripts
 usable locally, and have each Actions job call those scripts. Cross-platform release uploads are configured and wait for every platform build.

@@ -263,11 +263,17 @@ include(GNUInstallDirs)
 if(WIN32)
     enable_language(RC)
     configure_file(assets/app-icon.rc.in "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc" @ONLY)
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc" PROPERTIES
+        OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/alt-pg-admin.ico")
     target_sources(pgadmin_qt PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc")
 elseif(APPLE)
+    target_link_options(pgadmin_qt PRIVATE "-Wl,-headerpad_max_install_names")
     target_sources(pgadmin_qt PRIVATE assets/icons/alt-pg-admin.icns)
     set_source_files_properties(assets/icons/alt-pg-admin.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
-    set_target_properties(pgadmin_qt PROPERTIES MACOSX_BUNDLE_ICON_FILE alt-pg-admin.icns)
+    set_target_properties(pgadmin_qt PROPERTIES
+        MACOSX_BUNDLE_ICON_FILE alt-pg-admin.icns
+        MACOSX_BUNDLE_GUI_IDENTIFIER io.github.hdijkema.AltPgAdmin
+        MACOSX_BUNDLE_BUNDLE_NAME alt-pg-admin)
 endif()
 install(TARGETS pgadmin_qt
     BUNDLE DESTINATION .

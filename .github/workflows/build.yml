@@ -113,9 +113,16 @@ jobs:
     with:
       version: ${{ needs.version.outputs.version }}
 
+  macos:
+    name: macOS DMG
+    needs: version
+    uses: ./.github/workflows/macos.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
   release:
     name: Publish versioned release
-    needs: [version, windows, linux]
+    needs: [version, windows, linux, macos]
     if: needs.version.outputs.publish == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_type == 'tag'))
     runs-on: ubuntu-latest
     permissions:

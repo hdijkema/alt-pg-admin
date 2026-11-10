@@ -14,7 +14,7 @@ It produces three downloadable Actions artifacts, retained for 14 days:
 The build jobs have read-only repository permissions and do not publish to a
 package repository or Flathub. For a numeric version tag such as `v0.2.0`, or a
 manual main workflow run with version `0.2.0`, all platforms use that same version
-and the main release job attaches the Windows ZIP/installer, both `.deb` files and Flatpak
+and the main release job attaches the Windows ZIP/installer, both `.deb` files, Flatpak and the macOS DMG
 to one GitHub Release. The release job waits for every platform build to succeed.
 Ordinary branches/PRs and direct manual Linux-only runs produce Actions artifacts.
 An empty version uses the CMake development version.
@@ -25,6 +25,11 @@ Each job builds in a matching `debian:12` or `debian:13` container, using the
 normal system libpq (15 or newer). There is no bundled PostgreSQL library or
 server. CPack calculates shared-library dependencies and adds the Qt SVG/platform
 plugins, Qt translations, Secret Service client library and `postgresql-client`.
+On Debian 13, `qt6-svg-plugins` is an explicit build/runtime dependency: unlike
+Debian 12 it is not included in `libqt6svg6`. It provides SVG icon decoding when
+recommendations are disabled. The build container and script explicitly use
+`C.UTF-8` to avoid Qt's C-locale warning. Startup checks name each language and
+report an icon-rendering failure explicitly.
 The client tools support backup, restore and database tasks; use client tools at
 least as new as the server for backups. A server newer than the distribution's
 client tools may require a separately installed matching PostgreSQL client.

@@ -28,6 +28,9 @@ jobs:
     name: Debian ${{ matrix.debian }} amd64
     runs-on: ubuntu-24.04
     container: debian:${{ matrix.debian }}
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -41,6 +44,9 @@ jobs:
             cmake ninja-build pkg-config python3 qt6-base-dev qt6-tools-dev-tools \
             qt6-l10n-tools qt6-svg-dev qt6-translations-l10n libpq-dev libsecret-1-dev \
             dpkg-dev file fonts-dejavu-core
+          if [ '${{ matrix.debian }}' = '13' ]; then
+            apt-get install -y --no-install-recommends qt6-svg-plugins
+          fi
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
