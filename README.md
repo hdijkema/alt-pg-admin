@@ -372,6 +372,27 @@ libpq, its runtime DLLs, pg_dump, pg_restore, psql, createdb and dropdb, includi
 lz4/zstd dependencies. Keep the deployed files together. Clean-machine distribution
 has not yet been validated.
 
+### Debian 12 / Linux build
+
+Use the distribution's Qt 6 and libpq development packages; PostgreSQL 15 or
+newer is supported. A database server is not required to build the application.
+On libpq versions without asynchronous cancellation, cancellation runs in a
+separate background task. Newer libpq retains its nonblocking cancel API.
+
+```sh
+sudo apt-get install build-essential cmake ninja-build qt6-base-dev qt6-svg-dev libpq-dev libsecret-1-dev
+cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DPGADM_BUILD_TESTS=ON
+cmake --build build/linux -j 4
+QT_QPA_PLATFORM=offscreen ctest --test-dir build/linux --output-on-failure
+./build/linux/pgadmin_qt
+```
+
+Initial configuration downloads the pinned QtKeychain, zlib and libxlsxwriter
+sources. Database integration tests are skipped without `PGADM_TEST_PORT`.
+Install `postgresql-client` separately if you need backup/restore and database
+maintenance command-line tools; these are resolved through PATH on Linux. Use
+client tools at least as new as the server for backups.
+
 ## Settings and startup measurement
 
 Settings use Qt AppConfigLocation for Hans/PgAdmQt, in settings.ini. Profiles do not

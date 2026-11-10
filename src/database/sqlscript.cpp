@@ -1,4 +1,5 @@
 #include "sqlscript.h"
+#include <QCoreApplication>
 #include <QRegularExpression>
 
 // Scan statement boundaries outside quoted strings/bodies and nested comments, retaining result annotations.
@@ -33,7 +34,7 @@ QVector<SqlStatement> SqlScript::split(const QString &sql, QString *error)
                 else if (sql.mid(i, 2) == "*/") { --depth; i += 2; }
                 else ++i;
             }
-            if (depth) { *error = "Niet-afgesloten blokcommentaar."; return {}; }
+            if (depth) { *error = QCoreApplication::translate("sqlscript", "Niet-afgesloten blokcommentaar."); return {}; }
             continue;
         }
         if (c == ';') {

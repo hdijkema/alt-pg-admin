@@ -15,6 +15,7 @@
 #include <QDir>
 #include <QCryptographicHash>
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QCheckBox>
@@ -42,6 +43,7 @@
 #include <QToolBar>
 #include <QTreeWidget>
 #include <QUuid>
+#include <libpq-fe.h>
 
 namespace {
 // Use a stable per-file layout key, treating case variants as the same Windows path.
@@ -313,11 +315,38 @@ PgAdmMain::PgAdmMain(QWidget *parent, const QString &settingsPath)
     view->addAction(savedDock->toggleViewAction());
     view->addAction(detailsDock->toggleViewAction());
     auto *help = menuBar()->addMenu(tr("&Help"));
+    auto *languageMenu = help->addMenu(tr("Taal / Language / Sprache"));
+    auto *languageGroup = new QActionGroup(this);
+    const QList<QPair<QString, QString>> languages = {
+        {"nl", "Nederlands"}, {"en", "English"}, {"de", "Deutsch"}};
+    const auto selectedLanguage = settings.value("ui/language",
+        qApp->property("uiLanguage").toString().isEmpty() ? QString("nl") : qApp->property("uiLanguage").toString()).toString();
+    for (const auto &language : languages) {
+        auto *action = languageMenu->addAction(language.second);
+        action->setObjectName("language_" + language.first);
+        action->setCheckable(true);
+        action->setChecked(selectedLanguage == language.first);
+        languageGroup->addAction(action);
+        connect(action, &QAction::triggered, this, [this, code = language.first] {
+            settings.setValue("ui/language", code);
+            settings.sync();
+            if (settings.status() != QSettings::NoError) {
+                QMessageBox::warning(this, tr("Taal wijzigen"), tr("De taalkeuze kon niet worden opgeslagen."));
+                return;
+            }
+            QMessageBox::information(this, tr("Taal wijzigen"),
+                tr("De taal wordt toegepast wanneer je de applicatie opnieuw start."));
+        });
+    }
     help->addAction(tr("Over PgAdm Qt"), this, [this] {
+        const int libpqVersion = PQlibVersion();
+        const auto libpqVersionText = QString("%1.%2").arg(libpqVersion / 10000).arg(libpqVersion % 10000);
         QMessageBox::about(this, tr("PgAdm Qt"), tr("PgAdm Qt %1\nNative PostgreSQL-beheeromgeving.\n\n"
+            "libpq: %2\nQt: %3\n\n"
             "Verbindingen via libpq en lokale SQL-bestanden.\n"
             "Query-uitvoering met doorlopende resultaten en celdetails.\n"
-            "Objectbeheer, rechten en onderhoud volgen.").arg(QCoreApplication::applicationVersion()));
+            "Objectbeheer, rechten en onderhoud volgen.")
+            .arg(QCoreApplication::applicationVersion(), libpqVersionText, QString::fromLatin1(qVersion())));
     });
     auto *toolbar = addToolBar(tr("Werkbalk"));
     toolbar->setObjectName("mainToolbar");

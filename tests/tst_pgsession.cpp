@@ -82,7 +82,7 @@ private slots:
         QCOMPARE(session.state(), PgSession::Connected);
         QCOMPARE(session.information().value("database").toString(), QString("postgres"));
         QVERIFY(session.information().value("backendPid").toInt() > 0);
-        QVERIFY(session.information().value("clientVersion").toInt() >= 180000);
+        QVERIFY(session.information().value("clientVersion").toInt() >= 150000);
         QVERIFY(session.information().value("serverVersion").toString().startsWith("18."));
         QVERIFY(!session.information().value("serverVersion").toString().isEmpty());
         session.close();

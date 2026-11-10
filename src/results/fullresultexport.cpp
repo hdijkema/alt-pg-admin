@@ -1,4 +1,5 @@
 #include "fullresultexport.h"
+#include <QCoreApplication>
 #include "qtxlsxwriter.h"
 #include <QSaveFile>
 #include <QFileInfo>
@@ -7,7 +8,7 @@
 FullResultExport::FullResultExport(const QString &path, bool excel, const QVector<int> &widths, bool overview)
     : widths(widths), overview(excel || overview)
 {
-    if (QFileInfo(path).isDir() || path.contains(QChar(0))) { error = "Kies een geldig exportbestand, geen map."; return; }
+    if (QFileInfo(path).isDir() || path.contains(QChar(0))) { error = QCoreApplication::translate("fullresultexport", "Kies een geldig exportbestand, geen map."); return; }
     if (excel) {
         xlsx = std::make_unique<QtXlsxWriter>(path);
         error = xlsx->errorString();
@@ -55,7 +56,7 @@ bool FullResultExport::endResult(const QString &status)
 QString FullResultExport::finish(bool success, const std::atomic_bool *cancelled)
 {
     if (!error.isEmpty()) return error;
-    if (!success || cancelled->load()) return "Export niet afgerond; het vorige bestand is behouden.";
+    if (!success || cancelled->load()) return QCoreApplication::translate("fullresultexport", "Export niet afgerond; het vorige bestand is behouden.");
     if (xlsx) return xlsx->save(cancelled);
     if (!csv->commit()) return csv->errorString();
     return {};

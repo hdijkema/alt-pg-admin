@@ -1,0 +1,113 @@
+name: Linux packages
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  debian:
+    name: Debian ${{ matrix.debian }} amd64
+    runs-on: ubuntu-24.04
+    container: debian:${{ matrix.debian }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: ['12', '13']
+    steps:
+      - name: Install build and packaging dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git build-essential \
+            cmake ninja-build pkg-config python3 qt6-base-dev qt6-tools-dev-tools \
+            qt6-l10n-tools qt6-svg-dev qt6-translations-l10n libpq-dev libsecret-1-dev \
+            dpkg-dev file fonts-dejavu-core
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build, test and package
+        shell: bash
+        run: ./tools/build-debian.sh
+      - name: Install and check the actual package
+        shell: bash
+        run: |
+          apt-get install -y ./dist/*.deb
+          for language in nl en de; do
+            QT_QPA_PLATFORM=offscreen /usr/bin/pgadmin_qt --language "$language" \
+              --settings-file "/tmp/package-$language.ini" --startup-check \
+              --startup-report "/tmp/package-$language.txt"
+            test -s "/tmp/package-$language.txt"
+          done
+          command -v pg_dump pg_restore psql createdb dropdb
+          dpkg -L alt-pg-admin
+      - uses: actions/upload-artifact@v6
+        with:
+          name: alt-pg-admin-debian${{ matrix.debian }}-amd64
+          path: dist/*.deb
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: debian${{ matrix.debian }}-reports
+          path: |
+            build/debian${{ matrix.debian }}/startup-*.txt
+            build/debian${{ matrix.debian }}/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  flatpak:
+    name: Flatpak x86_64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install Flatpak builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: packaging/flatpak/io.github.hdijkema.AltPgAdmin.json
+          bundle: alt-pg-admin-x86_64.flatpak
+          artifact-name: alt-pg-admin-flatpak-x86_64
+          upload-artifact: false
+          cache: true
+      - name: Check installed sandbox and client tools
+        run: |
+          flatpak install --user --noninteractive alt-pg-admin-x86_64.flatpak
+          mkdir -p build/flatpak-reports
+          for language in nl en de; do
+            flatpak run --env=QT_QPA_PLATFORM=offscreen io.github.hdijkema.AltPgAdmin \
+              --language "$language" --settings-file "/tmp/smoke-$language.ini" --startup-check \
+              --startup-report "$GITHUB_WORKSPACE/build/flatpak-reports/startup-$language.txt"
+            test -s "build/flatpak-reports/startup-$language.txt"
+          done
+          flatpak run --command=sh io.github.hdijkema.AltPgAdmin -ec \
+            'for tool in pg_dump pg_restore psql createdb dropdb; do "$tool" --version; done'
+          flatpak info --show-permissions io.github.hdijkema.AltPgAdmin
+      - uses: actions/upload-artifact@v6
+        with:
+          name: alt-pg-admin-flatpak-x86_64
+          path: alt-pg-admin-x86_64.flatpak
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: flatpak-reports
+          path: build/flatpak-reports/*.txt
+          if-no-files-found: ignore
+          retention-days: 14

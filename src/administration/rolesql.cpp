@@ -1,4 +1,5 @@
 #include "rolesql.h"
+#include <QCoreApplication>
 
 namespace {
 QString identifier(QString text) { text.replace('"', "\"\""); return '"' + text + '"'; }
@@ -39,11 +40,11 @@ QString RoleSql::databaseRightsQuery(const QString &role, const QString &databas
 // Protect reserved/system names and reject truncation before constructing any DDL.
 QString RoleSql::nameError(const QString &name)
 {
-    if (name.trimmed().isEmpty()) return "Vul een rolnaam in.";
-    if (name.toUtf8().size() > 63) return "De rolnaam is langer dan 63 UTF-8-bytes.";
-    if (name.startsWith("pg_")) return "Systeemrollen met prefix pg_ kunnen hier niet worden gewijzigd.";
+    if (name.trimmed().isEmpty()) return QCoreApplication::translate("rolesql", "Vul een rolnaam in.");
+    if (name.toUtf8().size() > 63) return QCoreApplication::translate("rolesql", "De rolnaam is langer dan 63 UTF-8-bytes.");
+    if (name.startsWith("pg_")) return QCoreApplication::translate("rolesql", "Systeemrollen met prefix pg_ kunnen hier niet worden gewijzigd.");
     for (const auto character : name)
-        if (character.category() == QChar::Other_Control) return "De rolnaam bevat een stuurteken.";
+        if (character.category() == QChar::Other_Control) return QCoreApplication::translate("rolesql", "De rolnaam bevat een stuurteken.");
     return {};
 }
 
@@ -54,7 +55,7 @@ QString RoleSql::roleChange(const QVariantMap &desired, const QVariantMap &origi
     *error = nameError(name);
     if (!error->isEmpty()) return {};
     const bool create = original.isEmpty();
-    if (!create && name != original.value("name").toString()) { *error = "Hernoemen van rollen wordt hier nog niet ondersteund."; return {}; }
+    if (!create && name != original.value("name").toString()) { *error = QCoreApplication::translate("rolesql", "Hernoemen van rollen wordt hier nog niet ondersteund."); return {}; }
     QStringList options;
     const QList<QPair<QString, QString>> attributes = {{"login","LOGIN"},{"inherit","INHERIT"},
         {"createdb","CREATEDB"},{"createrole","CREATEROLE"},{"superuser","SUPERUSER"},
@@ -66,7 +67,7 @@ QString RoleSql::roleChange(const QVariantMap &desired, const QVariantMap &origi
             options.append((value ? QString() : "NO") + attribute.second);
     }
     const int limit = desired.value("connection_limit", -1).toInt();
-    if (limit < -1) { *error = "Ongeldige verbindingslimiet."; return {}; }
+    if (limit < -1) { *error = QCoreApplication::translate("rolesql", "Ongeldige verbindingslimiet."); return {}; }
     if (create ? limit != -1 : limit != original.value("connection_limit", -1).toInt())
         options.append("CONNECTION LIMIT " + QString::number(limit));
     const auto until = desired.value("valid_until").toString().trimmed();
@@ -82,7 +83,7 @@ QString RoleSql::roleChange(const QVariantMap &desired, const QVariantMap &origi
     const auto parents = desired.value("memberships").toStringList();
     const auto previous = original.value("memberships").toStringList();
     for (const auto &parent : parents) {
-        if (parent == name) { *error = "Een rol kan geen lid zijn van zichzelf."; return {}; }
+        if (parent == name) { *error = QCoreApplication::translate("rolesql", "Een rol kan geen lid zijn van zichzelf."); return {}; }
         if (!previous.contains(parent)) statements.append("GRANT " + identifier(parent) + " TO " + identifier(name) + ';');
     }
     for (const auto &parent : previous)
@@ -96,7 +97,7 @@ QString RoleSql::databaseChange(const QString &role, const QString &database, co
 {
     *error = nameError(role);
     if (!error->isEmpty()) return {};
-    if (database.isEmpty() || database.contains(QChar(0))) { *error = "Kies een database."; return {}; }
+    if (database.isEmpty() || database.contains(QChar(0))) { *error = QCoreApplication::translate("rolesql", "Kies een database."); return {}; }
     QStringList statements;
     for (const auto &privilege : {QString("CONNECT"), QString("CREATE"), QString("TEMPORARY")}) {
         const bool value = desired.value(privilege).toBool();

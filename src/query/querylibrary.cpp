@@ -1,4 +1,5 @@
 #include "querylibrary.h"
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QSaveFile>
@@ -31,20 +32,20 @@ bool QueryLibrary::setCategory(const QString &name, const QString &categoryName,
 {
     error->clear();
     const auto existing = existingName(name);
-    if (existing.isEmpty()) { *error = "De bewaarde query bestaat niet meer."; return false; }
+    if (existing.isEmpty()) { *error = QCoreApplication::translate("querylibrary", "De bewaarde query bestaat niet meer."); return false; }
     auto value = categoryName.trimmed();
-    if (value.size() > 100) { *error = "Gebruik een categorienaam van maximaal 100 tekens."; return false; }
+    if (value.size() > 100) { *error = QCoreApplication::translate("querylibrary", "Gebruik een categorienaam van maximaal 100 tekens."); return false; }
     for (const auto character : value)
-        if (character.category() == QChar::Other_Control) { *error = "De categorienaam bevat een stuurteken."; return false; }
+        if (character.category() == QChar::Other_Control) { *error = QCoreApplication::translate("querylibrary", "De categorienaam bevat een stuurteken."); return false; }
     for (const auto &stored : categories())
         if (stored.compare(value, Qt::CaseInsensitive) == 0) { value = stored; break; }
     QSettings metadata(QDir(directory).filePath("categories.ini"), QSettings::IniFormat);
-    if (metadata.status() != QSettings::NoError) { *error = "De categorie-instellingen kunnen niet worden gelezen."; return false; }
+    if (metadata.status() != QSettings::NoError) { *error = QCoreApplication::translate("querylibrary", "De categorie-instellingen kunnen niet worden gelezen."); return false; }
     const auto key = "categories/" + QString::fromLatin1(QUrl::toPercentEncoding(existing));
     if (value.isEmpty()) metadata.remove(key);
     else metadata.setValue(key, value);
     metadata.sync();
-    if (metadata.status() != QSettings::NoError) { *error = "De categorie kan niet worden opgeslagen."; return false; }
+    if (metadata.status() != QSettings::NoError) { *error = QCoreApplication::translate("querylibrary", "De categorie kan niet worden opgeslagen."); return false; }
     return true;
 }
 
@@ -76,9 +77,9 @@ QString QueryLibrary::existingName(const QString &name) const
 bool QueryLibrary::validName(const QString &name, QString *error) const
 {
     error->clear();
-    if (name.trimmed().isEmpty()) *error = "Geef de query een naam.";
-    else if (QUrl::toPercentEncoding(name).size() > 200) *error = "De querynaam is te lang. Gebruik een kortere naam.";
-    else for (const auto c : name) if (c.category() == QChar::Other_Control) { *error = "De naam bevat een ongeldig stuurteken."; break; }
+    if (name.trimmed().isEmpty()) *error = QCoreApplication::translate("querylibrary", "Geef de query een naam.");
+    else if (QUrl::toPercentEncoding(name).size() > 200) *error = QCoreApplication::translate("querylibrary", "De querynaam is te lang. Gebruik een kortere naam.");
+    else for (const auto c : name) if (c.category() == QChar::Other_Control) { *error = QCoreApplication::translate("querylibrary", "De naam bevat een ongeldig stuurteken."); break; }
     return error->isEmpty();
 }
 
@@ -100,8 +101,8 @@ bool QueryLibrary::save(const QString &name, const QString &sql, bool overwrite,
 {
     if (!validName(name, error)) return false;
     const auto existing = existingName(name);
-    if (!existing.isEmpty() && !overwrite) { *error = "Er bestaat al een query met deze naam."; return false; }
-    if (!QDir().mkpath(directory)) { *error = "De map voor bewaarde queries kan niet worden gemaakt."; return false; }
+    if (!existing.isEmpty() && !overwrite) { *error = QCoreApplication::translate("querylibrary", "Er bestaat al een query met deze naam."); return false; }
+    if (!QDir().mkpath(directory)) { *error = QCoreApplication::translate("querylibrary", "De map voor bewaarde queries kan niet worden gemaakt."); return false; }
     QSaveFile file(filePath(existing.isEmpty() ? name : existing));
     const auto bytes = sql.toUtf8();
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
@@ -115,12 +116,12 @@ bool QueryLibrary::rename(const QString &from, const QString &to, QString *error
 {
     if (!validName(to, error) || !validName(from, error)) return false;
     if (from == to) return true;
-    if (!existingName(to).isEmpty()) { *error = "Er bestaat al een query met deze naam."; return false; }
+    if (!existingName(to).isEmpty()) { *error = QCoreApplication::translate("querylibrary", "Er bestaat al een query met deze naam."); return false; }
     QFile file(filePath(from));
     const auto previousCategory = category(from);
     if (!file.rename(filePath(to))) { *error = file.errorString(); return false; }
     if (!setCategory(to, previousCategory, error)) {
-        if (!file.rename(filePath(from))) *error += " De query staat nu onder de nieuwe naam: " + to;
+        if (!file.rename(filePath(from))) *error += QCoreApplication::translate("querylibrary", " De query staat nu onder de nieuwe naam: ") + to;
         return false;
     }
     QSettings metadata(QDir(directory).filePath("categories.ini"), QSettings::IniFormat);

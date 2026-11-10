@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.hdijkema.AltPgAdmin</id>
+  <name>PgAdm Qt</name>
+  <summary>Manage PostgreSQL databases with a native SQL editor</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <description>
+    <p>PgAdm Qt is a PostgreSQL administration application with connection profiles,
+    an object browser, a SQL editor, CSV and Excel export, role management,
+    backup and restore, and database maintenance.</p>
+    <p>The interface is available in Dutch, English and German.</p>
+  </description>
+  <launchable type="desktop-id">io.github.hdijkema.AltPgAdmin.desktop</launchable>
+  <url type="homepage">https://github.com/hdijkema/alt-pg-admin</url>
+  <url type="bugtracker">https://github.com/hdijkema/alt-pg-admin/issues</url>
+  <provides><binary>pgadmin_qt</binary></provides>
+</component>

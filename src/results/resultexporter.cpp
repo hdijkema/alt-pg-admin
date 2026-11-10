@@ -1,4 +1,5 @@
 #include "resultexporter.h"
+#include <QCoreApplication>
 #include <QSaveFile>
 #include <functional>
 #include "qtxlsxwriter.h"
@@ -6,7 +7,7 @@
 namespace {
 QString cellText(const ResultCell &cell)
 {
-    return cell.fullText() + (cell.truncated ? " [INGEKORT]" : "");
+    return cell.fullText() + (cell.truncated ? QCoreApplication::translate("resultexporter", " [INGEKORT]") : "");
 }
 
 // A single result is a plain table; multiple results include their section labels.
@@ -22,7 +23,7 @@ bool visit(const QVector<QueryResult> &results, bool overview,
             if (!row(values, false)) return false;
         }
         if ((overview || section.columns.isEmpty()) && !section.status.isEmpty() && !row({section.status}, false)) return false;
-        if (section.truncated && !row({"[INGEKORT: dit bestand bevat alleen de opgeslagen resultaten]"}, false)) return false;
+        if (section.truncated && !row({QCoreApplication::translate("resultexporter", "[INGEKORT: dit bestand bevat alleen de opgeslagen resultaten]")}, false)) return false;
         if (overview && !row({}, false)) return false;
     }
     return true;

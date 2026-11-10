@@ -1,4 +1,5 @@
 #include "resultmodel.h"
+#include <QCoreApplication>
 #include <QBrush>
 #include <QFontDatabase>
 #include <QPalette>
@@ -14,8 +15,8 @@ QString ResultCell::fullText() const
 QString ResultCell::preview() const
 {
     if (isNull) return "NULL";
-    if (isBinary) return QString("[binair: %1 bytes%2] %3%4")
-        .arg(sourceBytes).arg(truncated ? ", ingekort" : "")
+    if (isBinary) return QString(QCoreApplication::translate("resultmodel", "[binair: %1 bytes%2] %3%4"))
+        .arg(sourceBytes).arg(truncated ? QCoreApplication::translate("resultmodel", ", ingekort") : "")
         .arg(QString::fromLatin1(binary.left(24).toHex())).arg(binary.size() > 24 ? "…" : "");
     QString value = text.left(200);
     value.replace('\n', QChar(0x21b5));
@@ -52,8 +53,8 @@ QVariant ResultModel::data(const QModelIndex &index, int role) const
     if (role == Qt::ForegroundRole && (row.kind == Heading || row.kind == Columns)) return QBrush(QColor(25, 35, 45));
     if (role == Qt::ForegroundRole && row.kind == Status && section.error) return QBrush(QColor(190, 40, 40));
     if (role == Qt::ToolTipRole) {
-        if (const auto *value = cell(index)) return QString("%1 bytes%2 — klik voor details, dubbelklik voor dialoog")
-            .arg(value->sourceBytes).arg(value->truncated ? " (niet volledig opgeslagen)" : "");
+        if (const auto *value = cell(index)) return QString(QCoreApplication::translate("resultmodel", "%1 bytes%2 — klik voor details, dubbelklik voor dialoog"))
+            .arg(value->sourceBytes).arg(value->truncated ? QCoreApplication::translate("resultmodel", " (niet volledig opgeslagen)") : "");
         if (row.kind == Status) return section.status;
     }
     return {};
@@ -159,7 +160,7 @@ QString ResultModel::text() const
             output += values.join('\t') + '\n';
         }
         output += section.status + "\n\n";
-        if (section.truncated) output += "[INGEKORT: alleen de opgeslagen resultaten zijn gekopieerd]\n\n";
+        if (section.truncated) output += QCoreApplication::translate("resultmodel", "[INGEKORT: alleen de opgeslagen resultaten zijn gekopieerd]\n\n");
     }
     return output;
 }

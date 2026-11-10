@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=PgAdm Qt
+Comment=PostgreSQL database administration
+Comment[nl]=PostgreSQL-databasebeheer
+Comment[de]=PostgreSQL-Datenbankverwaltung
+Exec=pgadmin_qt
+Icon=io.github.hdijkema.AltPgAdmin
+Terminal=false
+Categories=Development;Database;
+Keywords=PostgreSQL;SQL;database;
+StartupNotify=true

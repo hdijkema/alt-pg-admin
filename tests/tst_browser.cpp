@@ -47,6 +47,8 @@
 #include <QToolButton>
 #include <QTest>
 #include <QUuid>
+#include <QTranslator>
+#include <QScopeGuard>
 
 class BrowserTest : public QObject
 {
@@ -106,6 +108,52 @@ private slots:
             schema + "\".voorbeeld_view AS SELECT * FROM \"" + schema + "\".voorbeeld; GRANT USAGE ON SCHEMA \"" + schema + "\" TO pgadm_test_auth; CREATE DATABASE lts_ontwikkel;"));
         QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 10000);
         QVERIFY(finished.first().at(0).toBool());
+    }
+
+    void translations_data()
+    {
+        QTest::addColumn<QString>("language");
+        QTest::addColumn<QString>("connectText");
+        QTest::addColumn<QString>("restartText");
+        QTest::newRow("Dutch") << "nl" << "Verbinden"
+            << "De taal wordt toegepast wanneer je de applicatie opnieuw start.";
+        QTest::newRow("English") << "en" << "Connect"
+            << "The language will be applied when you restart the application.";
+        QTest::newRow("German") << "de" << "Verbinden"
+            << "Die Sprache wird beim nächsten Start der Anwendung übernommen.";
+    }
+
+    void translations()
+    {
+        QFETCH(QString, language);
+        QFETCH(QString, connectText);
+        QFETCH(QString, restartText);
+        QTranslator translator;
+        if (language != "nl") {
+            QVERIFY(translator.load(":/i18n/pgadmin_" + language + ".qm"));
+            QVERIFY(qApp->installTranslator(&translator));
+        }
+        const auto removeTranslator = qScopeGuard([&] { qApp->removeTranslator(&translator); });
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const auto settingsPath = temporary.filePath("settings.ini");
+        PgAdmMain window(nullptr, settingsPath);
+        auto *connectAction = window.findChild<QAction *>("connectProfileAction");
+        QVERIFY(connectAction);
+        QCOMPARE(connectAction->text(), connectText);
+        auto *english = window.findChild<QAction *>("language_en");
+        QVERIFY(english);
+        QString message;
+        QTimer::singleShot(0, &window, [&] {
+            auto *dialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            if (dialog) { message = dialog->text(); dialog->accept(); }
+        });
+        english->trigger();
+        QCOMPARE(message, restartText);
+        QCOMPARE(QSettings(settingsPath, QSettings::IniFormat).value("ui/language").toString(), QString("en"));
+        QCOMPARE(connectAction->text(), connectText);
+        PgAdmMain restored(nullptr, settingsPath);
+        QVERIFY(restored.findChild<QAction *>("language_en")->isChecked());
     }
 
     void savedQueriesAndWidths()

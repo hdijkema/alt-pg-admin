@@ -3,7 +3,12 @@
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QDir>
+#include <QLibraryInfo>
+#include <QSettings>
+#include <QStandardPaths>
 #include <QTimer>
+#include <QTranslator>
 
 // Construct the native window and optionally record a bounded startup smoke check.
 int main(int argc, char *argv[])
@@ -14,6 +19,31 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName("Hans");
     QCoreApplication::setApplicationName("PgAdmQt");
     QCoreApplication::setApplicationVersion(PGADM_APP_VERSION);
+    const auto arguments = a.arguments();
+    const int settingsIndex = arguments.indexOf("--settings-file");
+    const QString settingsPath = settingsIndex >= 0 && settingsIndex + 1 < arguments.size()
+        ? arguments.at(settingsIndex + 1)
+        : QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/settings.ini";
+    QSettings settings(settingsPath, QSettings::IniFormat);
+    QString language = settings.value("ui/language", "nl").toString();
+    const int languageIndex = arguments.indexOf("--language");
+    if (languageIndex >= 0) {
+        if (languageIndex + 1 >= arguments.size()) return 1;
+        language = arguments.at(languageIndex + 1);
+    }
+    if (language != "nl" && language != "en" && language != "de") {
+        if (languageIndex >= 0) return 1;
+        language = "nl";
+    }
+    QTranslator qtTranslator;
+    if (qtTranslator.load("qtbase_" + language, QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
+        a.installTranslator(&qtTranslator);
+    QTranslator translator;
+    if (language != "nl") {
+        if (!translator.load(":/i18n/pgadmin_" + language + ".qm")) return 1;
+        a.installTranslator(&translator);
+    }
+    a.setProperty("uiLanguage", language);
     PgAdmMain w;
     w.show();
     if (a.arguments().contains("--startup-check")) {

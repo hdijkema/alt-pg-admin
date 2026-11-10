@@ -28,7 +28,7 @@ if(WIN32)
     set(PostgreSQL_LIBRARY_RELEASE "${PGADM_POSTGRESQL_ROOT}/lib/libpq.lib" CACHE FILEPATH "PostgreSQL import library" FORCE)
 endif()
 set(PostgreSQL_ADDITIONAL_VERSIONS "18")
-find_package(PostgreSQL 18 REQUIRED)
+find_package(PostgreSQL 15 REQUIRED)
 
 include(FetchContent)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies statically" FORCE)
@@ -70,7 +70,10 @@ if(MSVC)
     target_compile_options(qtxlsxwriter PRIVATE /utf-8 /W4)
 endif()
 
+include(cmake/Translations.cmake)
+
 set(PROJECT_SOURCES
+        ${PGADM_TRANSLATION_RESOURCE}
         assets/icons.qrc
         src/app/main.cpp
         src/app/pgadmmain.cpp
@@ -191,7 +194,7 @@ if(PGADM_BUILD_TESTS)
     add_executable(tst_pgsession tests/tst_pgsession.cpp src/results/fullresultexport.cpp src/database/pgsession.cpp src/database/pgsession.h src/database/sqlscript.cpp src/results/resultmodel.cpp)
     target_include_directories(tst_pgsession PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(tst_pgsession PRIVATE Qt${QT_VERSION_MAJOR}::Test Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Widgets PostgreSQL::PostgreSQL)
-    target_link_libraries(tst_pgsession PRIVATE qtxlsxwriter)
+    target_link_libraries(tst_pgsession PRIVATE qtxlsxwriter Qt${QT_VERSION_MAJOR}::Concurrent)
     if(MSVC)
         target_compile_options(tst_pgsession PRIVATE /utf-8 /W4)
     endif()
@@ -256,9 +259,13 @@ include(GNUInstallDirs)
 install(TARGETS pgadmin_qt
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime
 )
 
 if(QT_VERSION_MAJOR EQUAL 6)
     qt_finalize_executable(pgadmin_qt)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(cmake/LinuxPackaging.cmake)
 endif()

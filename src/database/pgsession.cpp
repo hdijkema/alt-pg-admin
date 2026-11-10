@@ -3,6 +3,8 @@
 #include "results/fullresultexport.h"
 
 #include <QElapsedTimer>
+#include <QFutureWatcher>
+#include <QtConcurrentRun>
 #include <QHostAddress>
 #include <QHostInfo>
 #include <QRegularExpression>
@@ -176,11 +178,12 @@ public:
         if (running) QTimer::singleShot(0, this, &PgConnection::readResults);
     }
 
-    // Start PostgreSQL cancellation on its separate nonblocking cancel connection.
+    // Request cancellation without blocking the connection worker.
     void cancel()
     {
         if (!running || cancelled) return;
         cancelled = true;
+#ifdef LIBPQ_HAS_ASYNC_CANCEL
         cancelConnection = PQcancelCreate(connection);
         if (!cancelConnection || !PQcancelStart(cancelConnection)) {
             emit notice(tr("Annuleren kon niet worden gestart; verbreek zo nodig de verbinding."));
@@ -190,6 +193,28 @@ public:
         cancelElapsed.start();
         cancelPollStatus = PGRES_POLLING_WRITING;
         pollCancel();
+#else
+        // Older libpq cancellation blocks. Give a separate task its own handle,
+        // keeping both the UI and the connection worker responsive.
+        const auto handle = std::shared_ptr<PGcancel>(PQgetCancel(connection), PQfreeCancel);
+        if (!handle) {
+            emit notice(tr("Annuleren kon niet worden gestart; verbreek zo nodig de verbinding."));
+            return;
+        }
+        auto *watcher = new QFutureWatcher<bool>(this);
+        cancelTask = watcher;
+        connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher] {
+            emit notice(watcher->result()
+                ? tr("Annuleringsverzoek verzonden; wachten op PostgreSQL.")
+                : tr("Annuleren niet bevestigd; verbreek zo nodig de verbinding."));
+            cancelTask = nullptr;
+            watcher->deleteLater();
+        });
+        watcher->setFuture(QtConcurrent::run([handle] {
+            char error[256] = {};
+            return PQcancel(handle.get(), error, sizeof(error)) != 0;
+        }));
+#endif
     }
 
 signals:
@@ -312,10 +337,19 @@ private:
     // Free the independent cancellation handle without closing the query connection.
     void clearCancel()
     {
+#ifdef LIBPQ_HAS_ASYNC_CANCEL
         if (cancelConnection) PQcancelFinish(cancelConnection);
         cancelConnection = nullptr;
+#else
+        if (cancelTask) {
+            cancelTask->disconnect(this);
+            cancelTask->deleteLater();
+            cancelTask = nullptr;
+        }
+#endif
     }
 
+#ifdef LIBPQ_HAS_ASYNC_CANCEL
     // Poll cancellation readiness with short timers and a bounded confirmation deadline.
     void pollCancel()
     {
@@ -336,10 +370,21 @@ private:
             clearCancel();
         } else QTimer::singleShot(20, this, &PgConnection::pollCancel);
     }
+#endif
 
     // End execution, release cancellation state and report PostgreSQL transaction status.
     void finishScript(bool success)
     {
+#ifndef LIBPQ_HAS_ASYNC_CANCEL
+        // Do not allow another script on this session while its cancellation
+        // task could still deliver a request to the same server backend.
+        if (cancelTask && !cancelTask->isFinished()) {
+            QTimer::singleShot(20, this, [this, success] {
+                if (running) finishScript(success);
+            });
+            return;
+        }
+#endif
         running = false;
         waiting = false;
         clearCancel();
@@ -559,8 +604,12 @@ private:
     QueryResult pending;
     QElapsedTimer statementElapsed;
     QElapsedTimer cancelElapsed;
+#ifdef LIBPQ_HAS_ASYNC_CANCEL
     PGcancelConn *cancelConnection = nullptr;
     PostgresPollingStatusType cancelPollStatus = PGRES_POLLING_WRITING;
+#else
+    QFutureWatcher<bool> *cancelTask = nullptr;
+#endif
     bool running = false;
     bool waiting = false;
     bool complete = false;
