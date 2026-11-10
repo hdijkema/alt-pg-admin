@@ -10,6 +10,10 @@ data flow, [the implementation plan](../STAPPENPLAN.md) for remaining work, and
 Technical documentation and source comments are written in English. UI labels
 quoted below retain their Dutch spelling so they can be found in the application.
 
+Application sources are grouped under `src` by responsibility. See
+[source layout](docs/SOURCE-LAYOUT.md) for the folders, file assignments and include
+conventions. Open the root `CMakeLists.txt` in Qt Creator as before.
+
 ## Quick start
 
 1. Run `build/Release/pgadmin_qt.exe`, or build/run through Qt Creator.
@@ -381,6 +385,14 @@ benchmarks or a complete comparison with pgAdmin.
 
 ## Testing
 
+Validated on 10 November 2026 after moving sources into responsibility-based
+`src` folders: the Windows Release application and all test targets built, and
+45 checks passed with none failed or skipped. Reports:
+[integration-1fb330e37400467db383c9ff5606a2cf](build/Release/integration-1fb330e37400467db383c9ff5606a2cf/).
+The disposable PostgreSQL 18 server was stopped. Portable package startup/version
+checks, ZIP integrity, release-version checks and workflow actionlint validation
+also passed. The GitHub distribution job still excludes integration tests.
+
 Validated on 9 November 2026 after editor comfort: 45 checks passed
 (11 connection, 13 query/export, 21 browser/editor/maintenance), none failed or
 skipped. Reports: [integration-9c2fe70921044b5190d41967b9cae481](build/Release/integration-9c2fe70921044b5190d41967b9cae481/).
@@ -453,10 +465,15 @@ and full result export beyond display retention limits are implemented. Editor
 search/replace, submission history, normal-exit tab restoration and explicit local
 keyword/identifier completion are also implemented.
 GitHub Actions is the intended build service. The initial Windows workflow is
-configured for pushes, pull requests and manual dispatches: build, isolated
-integration tests, then a downloadable portable ZIP artifact. The shared build
-and ZIP packaging scripts have been checked locally; the hosted workflow has not
-yet run. See [GitHub Actions builds](docs/CI.md) for commands, artifacts and limits.
+configured for pushes, pull requests and manual dispatches: a Release build with
+integration test targets disabled, then a downloadable portable ZIP artifact.
+Packaging checks startup with isolated settings. The shared build and ZIP packaging
+scripts have been checked locally; workflow updates still need a GitHub run.
+See [GitHub Actions builds](docs/CI.md) for commands, artifacts and limits.
+Pushing a tag such as `v0.2.0`, or supplying a version in a manual workflow run,
+publishes a GitHub Release with the versioned portable ZIP after successful
+packaging. The version also appears in the application. Branch/PR builds only
+produce Actions artifacts. Publication still needs validation on GitHub.
 The Inno Setup installer, macOS app bundle/DMG and Linux Flatpak jobs remain to be
 implemented and validated. Flatpak targets Debian,
 Ubuntu and Linux Mint with Flatpak configured. macOS/Linux are not yet built or validated; the

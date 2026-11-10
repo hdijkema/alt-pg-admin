@@ -2,7 +2,9 @@
 # Build output and smoke-test state stay outside the distributable application directory.
 param(
     [string]$BuildDirectory = (Join-Path $PSScriptRoot '../build/Release'),
-    [string]$QtRoot = 'C:/Qt/6.11.1/msvc2022_64'
+    [string]$QtRoot = 'C:/Qt/6.11.1/msvc2022_64',
+    [ValidatePattern('^$|^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$')]
+    [string]$Version = ''
 )
 $ErrorActionPreference = 'Stop'
 $projectDirectory = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -73,6 +75,9 @@ try {
         -WorkingDirectory $application -WindowStyle Hidden -PassThru
     if (!$process.WaitForExit(15000)) { $process.Kill(); throw 'The staged application did not finish its startup check.' }
     if ($process.ExitCode -ne 0 -or !(Test-Path -LiteralPath $report)) { throw 'The staged application could not start.' }
+    if ($Version -and !((Get-Content -LiteralPath $report) -contains "Application version: $Version")) {
+        throw 'The packaged executable version does not match the requested release version. Rebuild first.'
+    }
     Get-Content -LiteralPath $report
 } finally {
     $env:PATH = $oldPath
@@ -81,9 +86,10 @@ try {
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$archive = Join-Path $staging 'alt-pg-admin-windows-x64.zip'
+$archiveName = if ($Version) { "alt-pg-admin-$Version-windows-x64.zip" } else { 'alt-pg-admin-windows-x64.zip' }
+$archive = Join-Path $staging $archiveName
 [System.IO.Compression.ZipFile]::CreateFromDirectory($application, $archive, [System.IO.Compression.CompressionLevel]::Optimal, $true)
 $destination = Join-Path $projectDirectory 'dist'
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
-Move-Item -LiteralPath $archive -Destination (Join-Path $destination 'alt-pg-admin-windows-x64.zip') -Force
-Write-Output "Portable ZIP: $destination/alt-pg-admin-windows-x64.zip"
+Move-Item -LiteralPath $archive -Destination (Join-Path $destination $archiveName) -Force
+Write-Output "Portable ZIP: $destination/$archiveName"

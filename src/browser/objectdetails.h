@@ -1,6 +1,6 @@
 #ifndef OBJECTDETAILS_H
 #define OBJECTDETAILS_H
-#include "catalogservice.h"
+#include "database/catalogservice.h"
 #include <QWidget>
 
 class QLabel;

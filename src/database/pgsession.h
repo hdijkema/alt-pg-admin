@@ -6,7 +6,7 @@
 #include <QVariantMap>
 #include <atomic>
 #include <memory>
-#include "queryresult.h"
+#include "results/queryresult.h"
 
 class PgConnection;
 

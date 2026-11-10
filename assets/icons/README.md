@@ -10,5 +10,5 @@ for the toolbar; shapes and the original 24 by 24 view boxes are unchanged.
 Blue indicates query/file actions, amber opening files, purple profiles, green
 connect/run and red disconnect/stop. Disabled rendering uses the native Qt style.
 
-The eight SVGs are embedded through icons.qrc. There is no runtime download,
+The eight SVGs are embedded through assets/icons.qrc. There is no runtime download,
 JavaScript package or icon framework. Qt's SVG icon-engine plugin renders them.

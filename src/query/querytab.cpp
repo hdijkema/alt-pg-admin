@@ -1,10 +1,10 @@
 ﻿#include "querytab.h"
-#include "resultmodel.h"
+#include "results/resultmodel.h"
 #include <QToolButton>
 #include <QTimer>
-#include "cellviewer.h"
+#include "results/cellviewer.h"
 #include "sqleditor.h"
-#include "resultexporter.h"
+#include "results/resultexporter.h"
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMessageBox>

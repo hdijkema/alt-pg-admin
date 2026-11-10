@@ -1,6 +1,6 @@
 #include "databasejob.h"
-#include "pgtools.h"
-#include "pgsession.h"
+#include "database/pgtools.h"
+#include "database/pgsession.h"
 #include <QFile>
 #include <QFileInfo>
 #include <QFutureWatcher>

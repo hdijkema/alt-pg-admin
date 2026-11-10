@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(pgadmin_qt VERSION 0.1 LANGUAGES C CXX)
+set(PGADM_RELEASE_VERSION "" CACHE STRING "Release version (major.minor.patch); empty uses the development version")
+set(PGADM_VERSION "0.1.0")
+if(NOT PGADM_RELEASE_VERSION STREQUAL "")
+    if(NOT PGADM_RELEASE_VERSION MATCHES "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")
+        message(FATAL_ERROR "PGADM_RELEASE_VERSION must have the form major.minor.patch")
+    endif()
+    set(PGADM_VERSION "${PGADM_RELEASE_VERSION}")
+endif()
+project(pgadmin_qt VERSION ${PGADM_VERSION} LANGUAGES C CXX)
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -55,62 +63,63 @@ FetchContent_Declare(libxlsxwriter
     URL_HASH SHA256=e0db59fc248a5ffa465a05ea83a9d466d4bca0e53ab42771515d4ebb467a41c1
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(libxlsxwriter)
-add_library(qtxlsxwriter STATIC qtxlsxwriter.cpp qtxlsxwriter.h)
+add_library(qtxlsxwriter STATIC src/results/qtxlsxwriter.cpp src/results/qtxlsxwriter.h)
+target_include_directories(qtxlsxwriter PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(qtxlsxwriter PUBLIC Qt${QT_VERSION_MAJOR}::Core PRIVATE xlsxwriter)
 if(MSVC)
     target_compile_options(qtxlsxwriter PRIVATE /utf-8 /W4)
 endif()
 
 set(PROJECT_SOURCES
-        icons.qrc
-        main.cpp
-        pgadmmain.cpp
-        pgadmmain.h
-        profiledialog.cpp
-        profiledialog.h
-        pgtools.cpp
-        pgtools.h
-        databasejob.cpp
-        databasejob.h
-        databasetaskdialog.cpp
-        databasetaskdialog.h
-        rolesql.cpp
-        rolesql.h
-        rolemanager.cpp
-        rolemanager.h
-        pgadmmain.ui
-        querytab.cpp
-        editorstate.cpp
-        querytab.h
-        resultexporter.cpp
-        resultexporter.h
-        sqlhighlighter.cpp
-        sqlhighlighter.h
-        sqleditor.cpp
-        sqleditor.h
-        querylibrary.cpp
-        querylibrary.h
-        savedqueriespanel.cpp
-        savedqueriespanel.h
-        fullresultexport.cpp
-        fullresultexport.h
-        pgsession.cpp
-        pgsession.h
-        queryresult.h
-        sqlscript.cpp
-        sqlscript.h
-        resultmodel.cpp
-        resultmodel.h
-        cellviewer.cpp
-        cellviewer.h
-        passwordstore.cpp
-        passwordstore.h
-        catalogservice.cpp
-        catalogservice.h
-        catalogtree.cpp
-        catalogtree.h
-        objectdetails.cpp
-        objectdetails.h
+        assets/icons.qrc
+        src/app/main.cpp
+        src/app/pgadmmain.cpp
+        src/app/pgadmmain.h
+        src/connections/profiledialog.cpp
+        src/connections/profiledialog.h
+        src/database/pgtools.cpp
+        src/database/pgtools.h
+        src/administration/databasejob.cpp
+        src/administration/databasejob.h
+        src/administration/databasetaskdialog.cpp
+        src/administration/databasetaskdialog.h
+        src/administration/rolesql.cpp
+        src/administration/rolesql.h
+        src/administration/rolemanager.cpp
+        src/administration/rolemanager.h
+        src/app/pgadmmain.ui
+        src/query/querytab.cpp
+        src/app/editorstate.cpp
+        src/query/querytab.h
+        src/results/resultexporter.cpp
+        src/results/resultexporter.h
+        src/query/sqlhighlighter.cpp
+        src/query/sqlhighlighter.h
+        src/query/sqleditor.cpp
+        src/query/sqleditor.h
+        src/query/querylibrary.cpp
+        src/query/querylibrary.h
+        src/query/savedqueriespanel.cpp
+        src/query/savedqueriespanel.h
+        src/results/fullresultexport.cpp
+        src/results/fullresultexport.h
+        src/database/pgsession.cpp
+        src/database/pgsession.h
+        src/results/queryresult.h
+        src/database/sqlscript.cpp
+        src/database/sqlscript.h
+        src/results/resultmodel.cpp
+        src/results/resultmodel.h
+        src/results/cellviewer.cpp
+        src/results/cellviewer.h
+        src/connections/passwordstore.cpp
+        src/connections/passwordstore.h
+        src/database/catalogservice.cpp
+        src/database/catalogservice.h
+        src/browser/catalogtree.cpp
+        src/browser/catalogtree.h
+        src/browser/objectdetails.cpp
+        src/browser/objectdetails.h
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -137,6 +146,8 @@ else()
 endif()
 
 target_link_libraries(pgadmin_qt PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+target_include_directories(pgadmin_qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(pgadmin_qt PRIVATE PGADM_APP_VERSION="${PROJECT_VERSION}")
 target_link_libraries(pgadmin_qt PRIVATE PostgreSQL::PostgreSQL)
 target_link_libraries(pgadmin_qt PRIVATE qt6keychain)
 target_link_libraries(pgadmin_qt PRIVATE qtxlsxwriter Qt${QT_VERSION_MAJOR}::Concurrent)
@@ -177,8 +188,8 @@ if(PGADM_BUILD_TESTS)
     enable_testing()
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test Network)
-    add_executable(tst_pgsession tests/tst_pgsession.cpp fullresultexport.cpp pgsession.cpp pgsession.h sqlscript.cpp resultmodel.cpp)
-    target_include_directories(tst_pgsession PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    add_executable(tst_pgsession tests/tst_pgsession.cpp src/results/fullresultexport.cpp src/database/pgsession.cpp src/database/pgsession.h src/database/sqlscript.cpp src/results/resultmodel.cpp)
+    target_include_directories(tst_pgsession PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(tst_pgsession PRIVATE Qt${QT_VERSION_MAJOR}::Test Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Widgets PostgreSQL::PostgreSQL)
     target_link_libraries(tst_pgsession PRIVATE qtxlsxwriter)
     if(MSVC)
@@ -189,9 +200,9 @@ if(PGADM_BUILD_TESTS)
             "$<TARGET_FILE:Qt${QT_VERSION_MAJOR}::Test>" "$<TARGET_FILE_DIR:tst_pgsession>")
     endif()
     add_test(NAME pgsession COMMAND tst_pgsession)
-    add_executable(tst_queries tests/tst_queries.cpp fullresultexport.cpp pgsession.cpp pgsession.h sqlscript.cpp resultmodel.cpp resultmodel.h querytab.cpp querytab.h cellviewer.cpp cellviewer.h sqlhighlighter.cpp sqlhighlighter.h sqleditor.cpp sqleditor.h resultexporter.cpp resultexporter.h)
+    add_executable(tst_queries tests/tst_queries.cpp src/results/fullresultexport.cpp src/database/pgsession.cpp src/database/pgsession.h src/database/sqlscript.cpp src/results/resultmodel.cpp src/results/resultmodel.h src/query/querytab.cpp src/query/querytab.h src/results/cellviewer.cpp src/results/cellviewer.h src/query/sqlhighlighter.cpp src/query/sqlhighlighter.h src/query/sqleditor.cpp src/query/sqleditor.h src/results/resultexporter.cpp src/results/resultexporter.h)
     target_compile_definitions(tst_queries PRIVATE PGADM_TEST_PYTHON="${Python3_EXECUTABLE}")
-    target_include_directories(tst_queries PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_include_directories(tst_queries PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(tst_queries PRIVATE Qt${QT_VERSION_MAJOR}::Test Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Widgets PostgreSQL::PostgreSQL)
     target_link_libraries(tst_queries PRIVATE qtxlsxwriter Qt${QT_VERSION_MAJOR}::Concurrent)
     if(MSVC)
@@ -208,9 +219,9 @@ if(PGADM_BUILD_TESTS)
     add_test(NAME queries COMMAND tst_queries)
     set_tests_properties(queries PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     set(BROWSER_TEST_SOURCES ${PROJECT_SOURCES})
-    list(REMOVE_ITEM BROWSER_TEST_SOURCES main.cpp pgadmmain.ui)
+    list(REMOVE_ITEM BROWSER_TEST_SOURCES src/app/main.cpp src/app/pgadmmain.ui)
     add_executable(tst_browser tests/tst_browser.cpp ${BROWSER_TEST_SOURCES})
-    target_include_directories(tst_browser PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_include_directories(tst_browser PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(tst_browser PRIVATE Qt${QT_VERSION_MAJOR}::Test Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network PostgreSQL::PostgreSQL qt6keychain)
     target_link_libraries(tst_browser PRIVATE qtxlsxwriter Qt${QT_VERSION_MAJOR}::Concurrent)
     if(MSVC)
@@ -236,7 +247,7 @@ endif()
 set_target_properties(pgadmin_qt PROPERTIES
     ${BUNDLE_ID_OPTION}
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
 )

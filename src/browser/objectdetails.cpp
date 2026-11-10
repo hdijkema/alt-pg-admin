@@ -1,6 +1,6 @@
 #include "objectdetails.h"
-#include "sqlhighlighter.h"
-#include "pgtools.h"
+#include "query/sqlhighlighter.h"
+#include "database/pgtools.h"
 #include <QApplication>
 #include <QClipboard>
 #include <QCoreApplication>

@@ -1,5 +1,5 @@
 #include "databasetaskdialog.h"
-#include "sqlhighlighter.h"
+#include "query/sqlhighlighter.h"
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>

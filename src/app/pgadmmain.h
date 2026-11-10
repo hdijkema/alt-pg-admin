@@ -5,7 +5,7 @@
 #include <QSettings>
 #include <QHash>
 #include <QSet>
-#include "databasejob.h"
+#include "administration/databasejob.h"
 
 class QTabWidget;
 class QTreeWidget;

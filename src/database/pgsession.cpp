@@ -1,6 +1,6 @@
 #include "pgsession.h"
 #include "sqlscript.h"
-#include "fullresultexport.h"
+#include "results/fullresultexport.h"
 
 #include <QElapsedTimer>
 #include <QHostAddress>

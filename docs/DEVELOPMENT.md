@@ -5,6 +5,16 @@ Qt's widget/model and asynchronous APIs. Stateless operations use functions;
 classes own actual UI state, connection state or resource lifetimes. Do not add
 an application framework or general repository/service layer around Qt.
 
+## Source folders
+
+Application sources live under `src/app`, `src/connections`, `src/database`,
+`src/browser`, `src/query`, `src/results` and `src/administration`. See
+`SOURCE-LAYOUT.md` for the file-by-file assignment. CMake keeps explicit source
+lists, with `src` as the include root for the application, qtxlsxwriter and tests.
+Cross-folder includes state the owning folder; same-folder includes stay local.
+The resource collection is `assets/icons.qrc`, with unchanged `:/icons` aliases.
+Build/test/package scripts and output paths remain at their existing locations.
+
 ## Startup and connection ownership
 
 `main` constructs `PgAdmMain`. The main window reads local `QSettings`, creates
@@ -89,7 +99,7 @@ are never retained. Normal saved-preview export and its clipping confirmation
 remain unchanged.
 
 The main toolbar reuses its existing QActions with 24-pixel Lucide SVG icons from
-icons.qrc. Tool buttons show icons; QAction text continues to supply tooltips,
+assets/icons.qrc. Tool buttons show icons; QAction text continues to supply tooltips,
 accessible names and menu labels. Native Qt rendering supplies disabled states.
 Eight local assets and their upstream ISC/MIT licence are bundled; no icon
 framework or runtime network request is introduced. Deployment needs Qt's SVG
@@ -123,7 +133,7 @@ one QTextCursor edit block. Explicit QCompleter suggestions combine `sqlKeywords
 text. No completion requests reach PostgreSQL; quoted identifiers and SQL context
 are not inferred.
 
-`editorstate.cpp` contains PgAdmMain's settings-based editor persistence. Normal
+`src/app/editorstate.cpp` contains PgAdmMain's settings-based editor persistence. Normal
 exit validates running jobs/queries and transaction closure, then saves tab SQL,
 file/library paths, BOM, dirty state, target, widths, cursor and active tab. Startup
 creates QueryTabs only, compares file-backed snapshots with disk to flag external
@@ -284,8 +294,20 @@ cannot be edited while their role window is open.
 
 ## Documentation and validation
 
-`.github/workflows/build.yml` calls the same Windows build and integration scripts
-as local development, then `tools/package-windows.ps1`. Visual Studio is discovered
+Release metadata is resolved by `tools/release-version.ps1` for numeric tags or
+explicit manual version input. CMake's `PGADM_RELEASE_VERSION` overrides the
+development version and supplies `PGADM_APP_VERSION` to `src/app/main.cpp`; About reads the
+Qt application version. The packaging smoke report verifies a requested version
+before creating its versioned ZIP. A separate write-enabled Actions job creates
+the GitHub Release only after the read-only build/package job succeeds.
+
+`SOURCE-LAYOUT.md` describes the implemented responsibility-based `src` folders.
+The file moves preserve component behaviour and ownership.
+
+`.github/workflows/build.yml` calls the Windows Release build script with
+`PGADM_BUILD_TESTS=OFF`, then `tools/package-windows.ps1`. The distribution job
+does not run PostgreSQL integration tests; those remain local development tools.
+The v6 checkout/setup-python/upload-artifact actions use Node.js 24. Visual Studio is discovered
 using vswhere; Qt/CMake/Ninja locations can be overridden through environment
 variables. Packaging stages explicit runtime files and MSVC DLLs, checks native
 startup with isolated settings and a reduced PATH, then produces an Actions ZIP

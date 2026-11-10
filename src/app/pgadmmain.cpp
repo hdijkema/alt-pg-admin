@@ -1,15 +1,15 @@
 #include "pgadmmain.h"
-#include "querytab.h"
-#include "pgsession.h"
-#include "passwordstore.h"
-#include "catalogtree.h"
-#include "savedqueriespanel.h"
-#include "profiledialog.h"
-#include "objectdetails.h"
-#include "databasetaskdialog.h"
-#include "catalogservice.h"
-#include "rolemanager.h"
-#include "sqleditor.h"
+#include "query/querytab.h"
+#include "database/pgsession.h"
+#include "connections/passwordstore.h"
+#include "browser/catalogtree.h"
+#include "query/savedqueriespanel.h"
+#include "connections/profiledialog.h"
+#include "browser/objectdetails.h"
+#include "administration/databasetaskdialog.h"
+#include "database/catalogservice.h"
+#include "administration/rolemanager.h"
+#include "query/sqleditor.h"
 #include <QListWidget>
 #include <QVBoxLayout>
 #include <QDir>
@@ -314,10 +314,10 @@ PgAdmMain::PgAdmMain(QWidget *parent, const QString &settingsPath)
     view->addAction(detailsDock->toggleViewAction());
     auto *help = menuBar()->addMenu(tr("&Help"));
     help->addAction(tr("Over PgAdm Qt"), this, [this] {
-        QMessageBox::about(this, tr("PgAdm Qt"), tr("PgAdm Qt 0.1\nNative PostgreSQL-beheeromgeving.\n\n"
+        QMessageBox::about(this, tr("PgAdm Qt"), tr("PgAdm Qt %1\nNative PostgreSQL-beheeromgeving.\n\n"
             "Verbindingen via libpq en lokale SQL-bestanden.\n"
             "Query-uitvoering met doorlopende resultaten en celdetails.\n"
-            "Objectbeheer, rechten en onderhoud volgen."));
+            "Objectbeheer, rechten en onderhoud volgen.").arg(QCoreApplication::applicationVersion()));
     });
     auto *toolbar = addToolBar(tr("Werkbalk"));
     toolbar->setObjectName("mainToolbar");

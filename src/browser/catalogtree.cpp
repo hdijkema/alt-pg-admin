@@ -1,5 +1,5 @@
 #include "catalogtree.h"
-#include "catalogservice.h"
+#include "database/catalogservice.h"
 #include <QStyle>
 
 // Wire lazy expansion and route catalog replies through persistent indexes to surviving nodes.

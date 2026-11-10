@@ -1,5 +1,5 @@
 #include "pgadmmain.h"
-#include "querytab.h"
+#include "query/querytab.h"
 #include <QDateTime>
 #include <QFile>
 #include <QListWidget>

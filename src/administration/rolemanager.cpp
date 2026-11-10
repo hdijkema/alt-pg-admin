@@ -1,7 +1,7 @@
 #include "rolemanager.h"
-#include "pgsession.h"
+#include "database/pgsession.h"
 #include "rolesql.h"
-#include "sqlhighlighter.h"
+#include "query/sqlhighlighter.h"
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
