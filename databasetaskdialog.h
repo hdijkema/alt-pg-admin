@@ -26,7 +26,8 @@ class DatabaseTaskDialog : public QDialog
     Q_OBJECT
 public:
     DatabaseTaskDialog(DatabaseJob::Operation operation, const QVariantMap &profile,
-                       const QString &password, const QString &database, QWidget *parent = nullptr);
+                       const QString &password, const QString &database, QWidget *parent = nullptr,
+                       const QString &schema = {}, const QString &relation = {});
     bool isRunning() const { return job->isRunning(); }
     QString database() const;
     // Run after the owner has prepared the captured target. Invalid input starts no job.
@@ -48,6 +49,8 @@ private:
     QVariantMap profile;
     QString password;
     QString target;
+    QString schema;
+    QString relation;
     DatabaseJob *job;
     QLineEdit *name;
     QLineEdit *file;
@@ -55,6 +58,9 @@ private:
     QComboBox *format;
     QCheckBox *clean;
     QCheckBox *skipOwners;
+    QCheckBox *vacuumAnalyze;
+    QCheckBox *reindexConcurrently;
+    QPlainTextEdit *maintenancePreview;
     QPushButton *browseButton;
     QPushButton *start;
     QPushButton *close;

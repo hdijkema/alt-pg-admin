@@ -1,7 +1,9 @@
 ﻿#include "querytab.h"
 #include "resultmodel.h"
+#include <QToolButton>
+#include <QTimer>
 #include "cellviewer.h"
-#include "sqlhighlighter.h"
+#include "sqleditor.h"
 #include "resultexporter.h"
 #include <QFileDialog>
 #include <QFileInfo>
@@ -42,16 +44,20 @@ QueryTab::QueryTab(QWidget *parent) : QWidget(parent)
     connections->setMinimumContentsLength(20);
     context->addWidget(connections, 1);
     state = new QLabel(tr("Gereed"), this);
+    state->setObjectName("queryState");
+    fullExportTimer = new QTimer(this);
+    fullExportTimer->setInterval(500);
+    connect(fullExportTimer, &QTimer::timeout, this, [this] { updateFullExport(fullExportRows); });
     context->addWidget(state);
     layout->addLayout(context);
     connect(connections, &QComboBox::currentIndexChanged, this, [this] { emit connectionChanged(); });
     auto *splitter = new QSplitter(Qt::Vertical, this);
-    sqlEditor = new QPlainTextEdit(splitter);
-    new SqlHighlighter(sqlEditor->document());
+    sqlEditor = new SqlEditor(splitter);
     sqlEditor->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     sqlEditor->setPlaceholderText(tr("Schrijf SQL of open een bestand. F5 voert de selectie of het hele script uit.\n-- @resultaat: Naam van het volgende resultaat"));
     sqlEditor->setLineWrapMode(QPlainTextEdit::NoWrap);
     sqlEditor->setTabStopDistance(sqlEditor->fontMetrics().horizontalAdvance(' ') * 4);
+    sqlEditor->setToolTip(tr("Ctrl+F: zoeken | Ctrl+H: vervangen | F3 / Shift+F3: volgende / vorige | Ctrl+Spatie: SQL aanvullen"));
     output = new QTabWidget(splitter);
     auto *resultPanel = new QWidget(output);
     auto *resultLayout = new QVBoxLayout(resultPanel);
@@ -77,6 +83,16 @@ QueryTab::QueryTab(QWidget *parent) : QWidget(parent)
     tools->addWidget(copyButton);
     tools->addWidget(csvButton);
     tools->addWidget(xlsxButton);
+    fullExportButton = new QToolButton(this);
+    fullExportButton->setObjectName("fullResultExportButton");
+    fullExportButton->setText(tr("Uitvoeren + exporteren"));
+    fullExportButton->setToolTip(tr("Voert de actuele SQL/selectie eenmaal uit en schrijft alle resultaatrijen rechtstreeks naar een bestand. De weergave blijft begrensd."));
+    fullExportButton->setPopupMode(QToolButton::InstantPopup);
+    auto *fullMenu = new QMenu(fullExportButton);
+    fullMenu->addAction(tr("SQL uitvoeren naar volledige CSV..."), this, [this] { emit fullExportRequested(false); });
+    fullMenu->addAction(tr("SQL uitvoeren naar volledige Excel..."), this, [this] { emit fullExportRequested(true); });
+    fullExportButton->setMenu(fullMenu);
+    context->addWidget(fullExportButton);
     resultLayout->addLayout(tools);
     auto *resultSplit = new QSplitter(Qt::Horizontal, resultPanel);
     table = new QTableView(resultSplit);
@@ -233,7 +249,7 @@ void QueryTab::startExecution()
     applyColumnWidths();
     messages->clear();
     plan->clear();
-    appendMessage(tr("Opdrachten worden afzonderlijk uitgevoerd; stop bij de eerste fout. Gebruik BEGIN / COMMIT voor een gezamenlijke transactie.\nTabs met hetzelfde profiel delen de sessie."));
+    appendMessage(tr("Opdrachten worden afzonderlijk uitgevoerd; stop bij de eerste fout. Gebruik BEGIN / COMMIT voor een gezamenlijke transactie.\nDeze tab heeft een eigen sessie en transactie."));
     state->setText(tr("Bezig..."));
     output->setCurrentIndex(0);
 }
@@ -259,6 +275,8 @@ void QueryTab::appendMessage(const QString &message) { messages->appendPlainText
 // Unlock controls and record success plus the server-reported transaction state.
 void QueryTab::finishExecution(bool success, const QString &transaction)
 {
+    if (fullExportTimer->isActive()) appendMessage(tr("Totale exportduur: %1 ms").arg(fullExportElapsed.elapsed()));
+    fullExportTimer->stop();
     running = false;
     updateExportActions();
     allResults->setEnabled(true);
@@ -280,10 +298,30 @@ void QueryTab::copyAll()
 // Enable output actions only for completed stored results and no active file export.
 void QueryTab::updateExportActions()
 {
+    fullExportButton->setEnabled(canExecute && !running && !exporting);
     const bool available = !running && !exporting && !model->results().isEmpty();
     copyButton->setEnabled(available);
     csvButton->setEnabled(available);
     xlsxButton->setEnabled(available);
+}
+
+void QueryTab::setFullExportAvailable(bool enabled) { canExecute = enabled; updateExportActions(); }
+
+// Time the explicit run, including connection establishment and final file publication.
+void QueryTab::startFullExport(const QString &destination)
+{
+    fullExportRows = 0;
+    fullExportElapsed.start();
+    fullExportTimer->start();
+    appendMessage(tr("Nieuwe SQL-uitvoering met volledige export naar: %1\nAlle tussenresultaten worden geschreven. SQL-wijzigingen volgen de gewone transactieregels; een bestandsfout draait ze niet terug.").arg(destination));
+    updateFullExport(0);
+}
+
+// Update a bounded progress label; no full result data is retained for this display.
+void QueryTab::updateFullExport(qint64 rows)
+{
+    fullExportRows = rows;
+    state->setText(tr("Volledige export: %1 rijen | %2 s").arg(rows).arg(fullExportElapsed.elapsed() / 1000));
 }
 
 // Confirm clipping and destination, then export an immutable snapshot on a worker thread.

@@ -2,6 +2,10 @@
 #define SQLHIGHLIGHTER_H
 #include <QSyntaxHighlighter>
 #include <QHash>
+#include <QStringList>
+
+// Return the shared SQL keyword vocabulary; no connection or document is needed.
+QStringList sqlKeywords();
 
 // goal: Colour editor SQL without changing its text or dirty state.
 // pre: Attach to a GUI-thread QTextDocument; no PostgreSQL connection is required.

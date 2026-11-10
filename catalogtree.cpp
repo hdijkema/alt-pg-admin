@@ -172,6 +172,7 @@ void CatalogTree::populate(QTreeWidgetItem *item, const QVariantList &rows)
             if (!folders.contains(label)) folders[label] = add(item, label, Folder);
             auto *relation = add(folders[label], name, Relation, true);
             relation->setData(0, RelationName, name);
+            relation->setData(0, RelationKind, relationKind);
             relation->setToolTip(0, item->data(0, SchemaName).toString() + "." + name);
         } else if (kind == Relation) {
             auto *column = add(item, name + " : " + row.value("type").toString() +

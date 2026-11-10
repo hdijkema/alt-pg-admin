@@ -71,9 +71,12 @@ made outside this application.
 Right-click or double-click a database to open a query tab, including when that
 database is already connected. The profile's maintenance database is unchanged:
 a maintenance connection to postgres can coexist with query connections elsewhere.
-Query tabs targeting the same server/database currently share one session and its
-transaction. One script may run at a time per session. There are at most eight
-query sessions, plus up to eight separate metadata connections. Idle metadata
+Each query tab owns a private session and transaction, opened lazily on its first
+execution. Temporary tables and SET state belong to that tab, and other tabs can
+execute while it is busy. Closing or changing its target releases only its own
+session; open transactions require rollback confirmation. The selected target
+is retained after disconnection. There are at most eight active query-tab sessions,
+alongside up to eight server/database control sessions and eight metadata connections. Idle metadata
 connections may be replaced when needed. A long query does not occupy the
 browser's metadata session.
 
@@ -96,6 +99,32 @@ errors are displayed. The lock timeout is two seconds; the overall timeout is
 30 seconds. Changing selection or hiding the dock cancels obsolete work.
 
 ## Query editor and results
+
+### Editor comfort
+
+- **Ctrl+F** opens literal search; **Ctrl+H** also shows replacement controls.
+  **F3** / **Shift+F3** find the next/previous match, wrapping at the document edge.
+  Case-sensitive and whole-word matching are optional. Replace-all is one undo step.
+- **Ctrl+Space** offers SQL keywords and plain identifiers found in the first MiB
+  of the current editor text. Select a suggestion with the arrow keys and Enter;
+  Escape closes the popup. Completion is explicit and does not query the database.
+  This is local vocabulary completion, without catalog or SQL-context inference.
+- **Queryhistorie** shares the right dock area with saved queries. It stores the
+  latest 100 submitted scripts/selections (up to 64,000 characters each), including
+  time and database context. Entries include failed/cancelled submissions; they
+  are not a success log. Search filters the stored SQL and context. Double-click
+  opens a fresh editable tab without executing it. **Historie wissen** clears it.
+- Normal application exit preserves all open tabs, including unsaved edits,
+  file/library association, database target, cursor and column widths. Startup
+  restores these snapshots without connections or SQL execution. Files changed
+  externally leave the restored snapshot marked unsaved. Explicitly closing an
+  individual dirty tab still offers Save/Discard/Cancel. Open transactions still
+  require confirmation before closing. Running work prevents application exit.
+
+History and editor snapshots are local SQL text in the application settings;
+SQL literals are retained as typed. Passwords entered through connection profiles
+continue to use the system credential store. Tab snapshots are saved on normal
+exit, not continuously for crash recovery. Results and transactions are not restored.
 
 - Ctrl+N/Ctrl+W open and close tabs; Ctrl+O/Ctrl+S open and save UTF-8 SQL files.
 - SQL highlighting recognises keywords, strings, quoted identifiers, numbers,
@@ -126,7 +155,8 @@ columns. Separate result tabs are not created per statement.
   Values are explicit strings, preserving leading zeroes, large numbers and text
   beginning with `=`. Cells exceeding 32,767 UTF-16 code units, or containing NUL,
   fail with a message suggesting CSV. Existing output files remain intact.
-- Exports run in the background from the stored results. They do not rerun SQL.
+- The **CSV opslaan...** and **Excel opslaan...** actions run in the background
+  from stored results. They do not rerun SQL.
   Truncation is marked and requires confirmation before export. NULL appears as
   `NULL`; bytea uses hexadecimal `\x...` notation.
 - EXPLAIN output is included in the result overview. **Uitvoeringsplan** also
@@ -138,6 +168,37 @@ parser. psql directives and COPY data streams are unsupported in the query edito
 a COPY stream closes the connection with an explanation. Keep
 `standard_conforming_strings=on`; execution stops if it is disabled. Compound SQL
 bodies without dollar quoting are not a supported script case.
+
+### Full result export
+
+Choose **Uitvoeren + exporteren** beside the editor's connection/status controls,
+or **Query > SQL uitvoeren en volledig exporteren naar CSV/Excel...**. Select a
+destination before execution. This explicitly executes the current SQL selection
+or script once on that tab's own session; it does not recover an earlier clipped
+result or automatically replay past SQL. Temporary tables, SET state and open
+transactions remain available because the tab's connection is reused.
+
+All returned rows and complete values stream directly to the staged output before
+preview clipping. The result view keeps its usual memory/row/cell limits. All
+script results are exported, including annotations and empty result headings,
+regardless of **Tussenresultaten tonen**. A single CSV result is a plain table;
+multiple CSV results and XLSX output use named sections. Column widths and literal
+text values are preserved. Progress shows data rows and elapsed time; the log
+records the destination, outcome and final duration.
+
+**Query annuleren** also cancels full export. SQL errors, client write/format
+errors and cancellation preserve the previous destination file. File publication
+happens only after the complete script succeeds. A file error is not a database
+rollback: statements already committed keep their effects, and an explicit
+transaction retains normal PostgreSQL semantics. Following statements are stopped.
+Closing a tab/window during execution is blocked as for ordinary queries.
+
+Memory scales with the current row plus the bounded preview, not the total result
+size; one very large field still requires memory for decoding/writing. XLSX retains
+Excel's row/column/cell limits and fails explicitly rather than truncating. Use CSV
+for values exceeding those limits. Final XLSX ZIP generation may take time after
+rows are fetched; the UI remains responsive, and cancellation prevents publication
+after finalisation if it arrives before commit.
 
 ### Saved queries and categories
 
@@ -205,6 +266,22 @@ The connected server/database context menu provides:
 - **Database verwijderen...**: type the exact database name to confirm. postgres,
   template0/template1 and the configured maintenance database are protected.
   External clients are not forcibly disconnected; PostgreSQL may refuse the drop.
+
+**VACUUM...**, **ANALYZE...** and **REINDEX...** are available on databases and
+ordinary/partitioned tables or materialized views. Server-level actions let you
+select a database. The modeless dialog captures that exact database/table and
+shows the generated SQL before **Starten**. VACUUM optionally includes ANALYZE
+(on by default); FULL is not used. REINDEX defaults to CONCURRENTLY, with an
+explicit switch for a normal rebuild. Whole-database REINDEX excludes system
+catalogs. Notices include warnings about skipped objects; completion is not proof
+that every object was processed.
+
+These maintenance commands run on a separate asynchronous autocommit connection.
+They do not commit or roll back query-tab transactions. Open transactions may
+still hold locks or old snapshots that delay maintenance. The log and elapsed
+timer stay live; cancellation requests PostgreSQL cancellation. Already completed
+parts are not undone, and concurrent reindex cancellation can require follow-up
+inspection of indexes. A normal reindex blocks writers while it rebuilds.
 
 Server-level actions select a database from the loaded list. The modeless task
 window captures its target independently of later tree selections. **Starten**
@@ -304,6 +381,37 @@ benchmarks or a complete comparison with pgAdmin.
 
 ## Testing
 
+Validated on 9 November 2026 after editor comfort: 45 checks passed
+(11 connection, 13 query/export, 21 browser/editor/maintenance), none failed or
+skipped. Reports: [integration-9c2fe70921044b5190d41967b9cae481](build/Release/integration-9c2fe70921044b5190d41967b9cae481/).
+The disposable PostgreSQL 18 server was stopped. New cases verify literal and
+whole-word/case-sensitive replacement, deletion, one-step undo, wrapped search,
+keyboard completion, unsaved-tab/target/cursor/width restoration without sessions,
+external file changes, unchanged CRLF files and failed settings writes preventing
+exit. History tests cover actual selected SQL, bounded retention, oversized-query
+exclusion, persistence and opening a copy without executing it.
+
+Validated on 9 November 2026 after full result export: 42 checks passed
+(11 connection, 13 query/export, 18 browser/maintenance), none failed or skipped.
+Reports: [integration-228fa99310fc4318bfd47cb9b5ca99ed](build/Release/integration-228fa99310fc4318bfd47cb9b5ca99ed/).
+The disposable PostgreSQL 18 server was stopped. New tests cover 60,001 full CSV
+rows beyond the preview/memory limits, a 3 MiB cell, Unicode/quotes/newlines,
+NULL and bytea, 25,001 XLSX rows with literal values and column widths, cancelled
+publication, SQL/client/path failures preserving existing files, same-session
+temporary state, exactly-once side effects, stopped subsequent statements and
+the actual full-export UI path. The preview remains bounded.
+
+Validated on 9 November 2026 after maintenance and independent query-tab sessions:
+39 checks passed (11 connection, 11 query/export, 17 browser/maintenance), with no
+failures or skipped tests. Reports:
+[integration-c606bcf8cfde48cf97ddabe8e13b6539](build/Release/integration-c606bcf8cfde48cf97ddabe8e13b6539/).
+The disposable PostgreSQL 18 server was stopped. New cases verify distinct backend
+PIDs, transaction/temp-table/SET isolation, parallel queries, cancellation without
+affecting other tabs, rollback confirmation, backend cleanup and the eight-session
+limit/released-slot reuse. Maintenance tests cover quoted SQL, VACUUM/ANALYZE on
+a separate connection, REINDEX CONCURRENTLY, cancellation while waiting for a lock,
+restricted permissions and the actual table context menu/captured target.
+
 Validated on 9 November 2026 after the libxlsxwriter migration: 36 checks passed
 (11 connection, 11 query/export, 14 browser/maintenance), with no failures or
 skipped tests. Reports: [integration-fdb538041da44d699cefc7173770300c](build/Release/integration-fdb538041da44d699cefc7173770300c/).
@@ -340,13 +448,23 @@ as a fixture, not run against a user's database.
 
 ## Remaining work
 
-The agreed priorities are maintenance (VACUUM/ANALYZE/REINDEX), independent query-tab
-sessions/transactions, full result export beyond display retention limits, and
-editor comfort (search/replace, history, tab restoration and completion).
-Windows/macOS installers and Linux Flatpak builds follow, with GitHub Actions
-proposed for separate platform builds/tests and packaging. Flatpak targets Debian,
+Maintenance (VACUUM/ANALYZE/REINDEX), independent query-tab sessions/transactions
+and full result export beyond display retention limits are implemented. Editor
+search/replace, submission history, normal-exit tab restoration and explicit local
+keyword/identifier completion are also implemented.
+GitHub Actions is the intended build service. The initial Windows workflow is
+configured for pushes, pull requests and manual dispatches: build, isolated
+integration tests, then a downloadable portable ZIP artifact. The shared build
+and ZIP packaging scripts have been checked locally; the hosted workflow has not
+yet run. See [GitHub Actions builds](docs/CI.md) for commands, artifacts and limits.
+The Inno Setup installer, macOS app bundle/DMG and Linux Flatpak jobs remain to be
+implemented and validated. Flatpak targets Debian,
 Ubuntu and Linux Mint with Flatpak configured. macOS/Linux are not yet built or validated; the
 current dependency downloader and integration scripts are Windows-specific.
+The Windows ZIP contains deployed Qt/PostgreSQL tools and app-local MSVC runtime
+DLLs, and passes a local startup smoke check. Clean-machine operation still needs
+validation. The future installer will use the same staging directory. Settings and credentials retain their existing
+per-user locations; a separate portable-settings mode is not currently planned.
 Linux packaging must validate sandbox networking, credential storage and file
 portals, and include PostgreSQL client/maintenance tools. Flathub publication is
 a separate release step after installable CI artefacts have been tested.

@@ -72,22 +72,25 @@ bool QtXlsxWriter::writeRow(const QStringList &values, bool isHeading)
 }
 
 // Finalise ZIP output, then atomically copy it into the destination using public Qt APIs.
-QString QtXlsxWriter::save()
+QString QtXlsxWriter::save(const std::atomic_bool *cancelled)
 {
     if (!error.isEmpty()) return error;
     if (!workbook) return "Het Excel-bestand is al afgesloten.";
     const auto result = workbook_close(workbook);
     workbook = nullptr;
     if (!check(result)) return error;
+    if (cancelled && cancelled->load()) return "Export geannuleerd; het vorige bestand is behouden.";
     QFile temporary(staging.filePath("result.xlsx"));
     if (!temporary.open(QIODevice::ReadOnly)) { error = temporary.errorString(); return error; }
     QSaveFile destination(path);
     if (!destination.open(QIODevice::WriteOnly)) { error = destination.errorString(); return error; }
     while (!temporary.atEnd()) {
+        if (cancelled && cancelled->load()) return "Export geannuleerd; het vorige bestand is behouden.";
         const auto bytes = temporary.read(65536);
         if (temporary.error() != QFileDevice::NoError) { error = temporary.errorString(); return error; }
         if (destination.write(bytes) != bytes.size()) { error = destination.errorString(); return error; }
     }
+    if (cancelled && cancelled->load()) return "Export geannuleerd; het vorige bestand is behouden.";
     if (!destination.commit()) error = destination.errorString();
     return error;
 }

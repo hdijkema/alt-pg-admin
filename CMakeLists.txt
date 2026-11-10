@@ -80,15 +80,20 @@ set(PROJECT_SOURCES
         rolemanager.h
         pgadmmain.ui
         querytab.cpp
+        editorstate.cpp
         querytab.h
         resultexporter.cpp
         resultexporter.h
         sqlhighlighter.cpp
         sqlhighlighter.h
+        sqleditor.cpp
+        sqleditor.h
         querylibrary.cpp
         querylibrary.h
         savedqueriespanel.cpp
         savedqueriespanel.h
+        fullresultexport.cpp
+        fullresultexport.h
         pgsession.cpp
         pgsession.h
         queryresult.h
@@ -172,9 +177,10 @@ if(PGADM_BUILD_TESTS)
     enable_testing()
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test Network)
-    add_executable(tst_pgsession tests/tst_pgsession.cpp pgsession.cpp pgsession.h sqlscript.cpp resultmodel.cpp)
+    add_executable(tst_pgsession tests/tst_pgsession.cpp fullresultexport.cpp pgsession.cpp pgsession.h sqlscript.cpp resultmodel.cpp)
     target_include_directories(tst_pgsession PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(tst_pgsession PRIVATE Qt${QT_VERSION_MAJOR}::Test Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Widgets PostgreSQL::PostgreSQL)
+    target_link_libraries(tst_pgsession PRIVATE qtxlsxwriter)
     if(MSVC)
         target_compile_options(tst_pgsession PRIVATE /utf-8 /W4)
     endif()
@@ -183,7 +189,7 @@ if(PGADM_BUILD_TESTS)
             "$<TARGET_FILE:Qt${QT_VERSION_MAJOR}::Test>" "$<TARGET_FILE_DIR:tst_pgsession>")
     endif()
     add_test(NAME pgsession COMMAND tst_pgsession)
-    add_executable(tst_queries tests/tst_queries.cpp pgsession.cpp pgsession.h sqlscript.cpp resultmodel.cpp resultmodel.h querytab.cpp querytab.h cellviewer.cpp cellviewer.h sqlhighlighter.cpp sqlhighlighter.h resultexporter.cpp resultexporter.h)
+    add_executable(tst_queries tests/tst_queries.cpp fullresultexport.cpp pgsession.cpp pgsession.h sqlscript.cpp resultmodel.cpp resultmodel.h querytab.cpp querytab.h cellviewer.cpp cellviewer.h sqlhighlighter.cpp sqlhighlighter.h sqleditor.cpp sqleditor.h resultexporter.cpp resultexporter.h)
     target_compile_definitions(tst_queries PRIVATE PGADM_TEST_PYTHON="${Python3_EXECUTABLE}")
     target_include_directories(tst_queries PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(tst_queries PRIVATE Qt${QT_VERSION_MAJOR}::Test Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Widgets PostgreSQL::PostgreSQL)

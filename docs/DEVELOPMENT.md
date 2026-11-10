@@ -24,8 +24,15 @@ notifier, connection timer and asynchronous cancellation state. Connection
 completion emits information only after libpq has established the connection.
 Shutdown stops the worker event loop and waits for its resource cleanup.
 
-Query tabs currently share one session per server/database. They therefore also
-share transactions. Catalog metadata uses separate sessions, so a user query or
+Each query tab owns a lazy private PgSession in PgAdmMain::querySessions. Its
+logical server/database target stays separate in queryTargets. At first execution,
+pendingScripts holds the immutable SQL until connection completes. Results,
+notices, cancellation and transaction status route only to that tab. The eight-tab
+connection limit is independent of the existing eight control and eight metadata
+connections. Closing/retargeting releases the tab's session, with explicit rollback
+confirmation for native open/failed transaction state. Restore/drop refuse busy
+tabs and close idle target sessions; disconnecting a server/database covers all
+its query tabs. Empty tabs require no backend. Catalog metadata uses separate sessions, so a user query or
 transaction does not occupy the catalog queue. Do not silently change a tab's
 database when its connection disappears.
 
@@ -57,6 +64,30 @@ the value from the short table preview. Truncated values remain marked.
 
 ## Saved queries, widths and export
 
+Full result export is an explicit execution path, not a rerun of stored results.
+PgAdmMain::executeQuery captures SQL/path/format/widths in PendingQuery while a
+lazy tab session connects, then calls PgSession::executeToFile exactly once.
+The worker prepares FullResultExport before SQL and converts each libpq row before
+applying preview limits. It never queues full rows to the GUI: only the existing
+bounded preview batches and throttled row counts cross threads. FullResultExport
+streams CSV through QSaveFile or XLSX through the small QtXlsxWriter bridge.
+
+Section metadata comes from actual statement results, including empty SELECTs.
+CSV is plain for one result and an overview for scripts; XLSX is always an overview.
+Bytea is canonical hex, NULL is literal NULL and values are explicit strings.
+The whole file commits only after complete script success. File errors request
+query cancellation and stop subsequent statements; they do not roll back SQL that
+already committed. Client failure and PostgreSQL transaction state remain distinct.
+
+PgSession shares an atomic export cancellation flag with its worker. The GUI sets
+it immediately, including when the worker is finalising a ZIP. QtXlsxWriter::save
+checks it after ZIP generation and during the final copy, before publication.
+Native cancellation still handles active SQL. QueryTab runs its own elapsed timer
+so time keeps updating during ZIP finalisation; notices report final outcome.
+One broad row/field can temporarily use substantial memory, but earlier full rows
+are never retained. Normal saved-preview export and its clipping confirmation
+remain unchanged.
+
 The main toolbar reuses its existing QActions with 24-pixel Lucide SVG icons from
 icons.qrc. Tool buttons show icons; QAction text continues to supply tooltips,
 accessible names and menu labels. Native Qt rendering supplies disabled states.
@@ -83,6 +114,29 @@ Column widths are stored by column position. A saved query/file uses a hashed
 absolute-path settings key; unsaved tabs use the general default. Renaming a
 library entry migrates its layout key; deleting it detaches open editors and
 marks them modified. SQL text itself contains no layout metadata.
+
+`SqlEditor` subclasses QPlainTextEdit for concrete editor interaction ownership.
+Its modeless child dialog uses QTextDocument literal searches, with one wrapped
+search and optional case/word flags. Replace-all advances past inserted text in
+one QTextCursor edit block. Explicit QCompleter suggestions combine `sqlKeywords`
+(also consumed by SqlHighlighter) with plain tokens from the first MiB of editor
+text. No completion requests reach PostgreSQL; quoted identifiers and SQL context
+are not inferred.
+
+`editorstate.cpp` contains PgAdmMain's settings-based editor persistence. Normal
+exit validates running jobs/queries and transaction closure, then saves tab SQL,
+file/library paths, BOM, dirty state, target, widths, cursor and active tab. Startup
+creates QueryTabs only, compares file-backed snapshots with disk to flag external
+changes, and never creates PgSessions. Individual tab closure retains the existing
+save/discard prompt. This is normal-exit restoration, not crash autosave.
+
+Accepted private-session dispatches call `recordHistory`, including execution-to-file
+and lazy-connection dispatch. Rejected submissions/connection failures create no
+history entry. The newest 100 requests of at most 64,000 characters are stored in
+the same isolated QSettings file; SQL is plain text, including any SQL literals.
+The history dock filters SQL/context and opens copies in fresh tabs without replay.
+History describes submissions, not completion outcomes. Results, native sessions,
+transactions and connection-dialog passwords are excluded from editor persistence.
 
 `ResultExporter` traverses the stored sections for CSV, XLSX and HTML. CSV is
 UTF-8 with BOM, commas, quoted fields and doubled quotes. One section is a plain
@@ -138,6 +192,17 @@ Changing selection or hiding the pane kills obsolete dumps. Errors and stderr
 warnings are shown explicitly. Nothing in this view executes the displayed DDL.
 
 ## Database maintenance tasks
+
+DatabaseJob::maintain runs VACUUM, ANALYZE and REINDEX through a dedicated PgSession,
+not a query tab or explicit BEGIN. maintenanceSql quotes database/schema/relation
+identifiers and builds the same SQL displayed in DatabaseTaskDialog. Database
+targets and ordinary/partitioned tables/materialized views are supported. Relation
+kind is carried in CatalogTree data rather than inferred from folder labels.
+VACUUM ANALYZE and REINDEX CONCURRENTLY are defaults; VACUUM FULL is not offered.
+The existing bounded log and elapsed timer cover these jobs as well. Native notices
+remain visible, including skipped objects; success describes command completion.
+Cancel uses libpq cancellation, waits for completion/disconnection, and does not
+claim rollback of already finished maintenance steps. No user transaction is touched.
 
 `PgAdmMain::openDatabaseTask` captures a profile and database from the actual
 context menu. Server-level tasks select from the already loaded database list.
@@ -218,6 +283,14 @@ Missing roles must be reviewed/created before starting a fresh restore. Profiles
 cannot be edited while their role window is open.
 
 ## Documentation and validation
+
+`.github/workflows/build.yml` calls the same Windows build and integration scripts
+as local development, then `tools/package-windows.ps1`. Visual Studio is discovered
+using vswhere; Qt/CMake/Ninja locations can be overridden through environment
+variables. Packaging stages explicit runtime files and MSVC DLLs, checks native
+startup with isolated settings and a reduced PATH, then produces an Actions ZIP
+artifact. It never copies entire build or integration directories. See `CI.md` for
+the hosted-runner setup and remaining platform/distribution validation.
 
 Header contracts describe public behaviour; implementation comments explain
 nontrivial transitions and ownership. Avoid repeating the function name as prose.

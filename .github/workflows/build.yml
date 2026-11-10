@@ -1,0 +1,70 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      PGADM_QT_ROOT: ${{ github.workspace }}/build/Qt/6.11.1/msvc2022_64
+      PGADM_CMAKE: cmake
+      PGADM_NINJA: ninja
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Qt and download PostgreSQL 18
+        shell: pwsh
+        run: |
+          # This upstream revision supports Qt 6.11's split Windows repositories.
+          python -m pip install "aqtinstall @ git+https://github.com/miurahr/aqtinstall.git@5a49f2b391ae8ee1d3c0dd87f8b33c1d49a4deb7"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m aqt install-qt windows desktop 6.11.1 win64_msvc2022_64 --archives qtbase qtsvg qttools --outputdir "$env:GITHUB_WORKSPACE/build/Qt"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/fetch-postgresql.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build Release and deploy Qt
+        shell: cmd
+        run: build-release.cmd -DPGADM_BUILD_TESTS=ON
+      - name: Run isolated PostgreSQL integration tests
+        shell: pwsh
+        run: ./tests/run-integration.ps1
+      - name: Package portable ZIP
+        shell: pwsh
+        run: ./tools/package-windows.ps1 -QtRoot $env:PGADM_QT_ROOT
+      - name: Upload portable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: alt-pg-admin-windows-x64
+          path: dist/alt-pg-admin-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-reports
+          path: |
+            build/Release/integration-*/results.txt
+            build/Release/integration-*/queries.txt
+            build/Release/integration-*/browser.txt
+            build/Release/integration-*/postgres.log
+            build/Release/packaging-*/startup.txt
+          if-no-files-found: ignore
+          retention-days: 14

@@ -16,7 +16,7 @@ class CatalogTree : public QTreeWidget
     Q_OBJECT
 public:
     enum Kind { Server, DatabaseList, Database, Schema, Relation, Column, Folder, Info };
-    enum Role { ProfileId = Qt::UserRole, NodeKind, DatabaseName, SchemaName, RelationName, Loaded, Loading, ColumnName, Accessible };
+    enum Role { ProfileId = Qt::UserRole, NodeKind, DatabaseName, SchemaName, RelationName, Loaded, Loading, ColumnName, Accessible, RelationKind };
     // Borrow the existing metadata queue; detail views must not create a second pool.
     CatalogService *metadata() const { return catalog; }
     explicit CatalogTree(QWidget *parent = nullptr);

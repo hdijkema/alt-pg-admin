@@ -9,6 +9,9 @@
 #include "databasetaskdialog.h"
 #include "catalogservice.h"
 #include "rolemanager.h"
+#include "sqleditor.h"
+#include <QListWidget>
+#include <QVBoxLayout>
 #include <QDir>
 #include <QCryptographicHash>
 #include <QAction>
@@ -91,6 +94,15 @@ PgAdmMain::PgAdmMain(QWidget *parent, const QString &settingsPath)
     createDatabaseAction->setObjectName("createDatabaseAction");
     dropDatabaseAction = new QAction(tr("Database verwijderen..."), this);
     dropDatabaseAction->setObjectName("dropDatabaseAction");
+    vacuumAction = new QAction(tr("VACUUM..."), this);
+    vacuumAction->setObjectName("vacuumAction");
+    analyzeAction = new QAction(tr("ANALYZE..."), this);
+    analyzeAction->setObjectName("analyzeAction");
+    reindexAction = new QAction(tr("REINDEX..."), this);
+    reindexAction->setObjectName("reindexAction");
+    connect(vacuumAction, &QAction::triggered, this, [this] { openDatabaseTask(DatabaseJob::Vacuum); });
+    connect(analyzeAction, &QAction::triggered, this, [this] { openDatabaseTask(DatabaseJob::Analyze); });
+    connect(reindexAction, &QAction::triggered, this, [this] { openDatabaseTask(DatabaseJob::Reindex); });
     connect(backupAction, &QAction::triggered, this, [this] { openDatabaseTask(DatabaseJob::Backup); });
     connect(restoreAction, &QAction::triggered, this, [this] { openDatabaseTask(DatabaseJob::Restore); });
     connect(createDatabaseAction, &QAction::triggered, this, [this] { openDatabaseTask(DatabaseJob::Create); });
@@ -170,6 +182,12 @@ PgAdmMain::PgAdmMain(QWidget *parent, const QString &settingsPath)
                 menu.addSeparator();
             }
             if (propertiesAction->isEnabled()) menu.addAction(propertiesAction);
+            if (vacuumAction->isEnabled()) {
+                menu.addSeparator();
+                menu.addAction(vacuumAction);
+                menu.addAction(analyzeAction);
+                menu.addAction(reindexAction);
+            }
             if (!objects->selectedDatabase().isEmpty()) {
                 menu.addAction(databaseQueryAction);
                 menu.addSeparator();
@@ -224,21 +242,73 @@ PgAdmMain::PgAdmMain(QWidget *parent, const QString &settingsPath)
     connection->addAction(dropDatabaseAction);
     connection->addAction(rolesAction);
     connection->addSeparator();
+    connection->addAction(vacuumAction);
+    connection->addAction(analyzeAction);
+    connection->addAction(reindexAction);
+    connection->addSeparator();
     auto *profileAction = connection->addAction(tr("Nieuw profiel..."), this, [this] { editProfile(true); });
     connection->addAction(tr("Profiel wijzigen..."), this, [this] { editProfile(false); });
     connection->addAction(tr("Profiel verwijderen..."), this, &PgAdmMain::removeProfile);
     auto *query = menuBar()->addMenu(tr("&Query"));
     query->addAction(databaseQueryAction);
     runAction = query->addAction(tr("Selectie / script uitvoeren"), this, &PgAdmMain::runQuery);
+    runAction->setObjectName("runQueryAction");
     runAction->setShortcut(Qt::Key_F5);
     runAction->setEnabled(false);
     stopAction = query->addAction(tr("Query annuleren"), this, &PgAdmMain::cancelQuery);
+    stopAction->setObjectName("cancelQueryAction");
     stopAction->setEnabled(false);
+    query->addSeparator();
+    fullCsvAction = query->addAction(tr("SQL uitvoeren en volledig exporteren naar CSV..."), this, [this] { exportFullResults(false); });
+    fullCsvAction->setObjectName("fullResultCsvAction");
+    fullXlsxAction = query->addAction(tr("SQL uitvoeren en volledig exporteren naar Excel..."), this, [this] { exportFullResults(true); });
+    fullXlsxAction->setObjectName("fullResultXlsxAction");
     connect(queries, &QTabWidget::currentChanged, this, [this] { updateQueryActions(); });
     query->addAction(tr("Uitvoeringsplan tonen"), this, [this] {
         if (currentQuery()) currentQuery()->showPlan();
     });
+    auto *edit = menuBar()->addMenu(tr("&Bewerken"));
+    edit->addAction(tr("Zoeken... (Ctrl+F)"), this, [this] {
+        if (auto *tab = currentQuery()) qobject_cast<SqlEditor *>(tab->editor())->showSearch();
+    });
+    edit->addAction(tr("Vervangen... (Ctrl+H)"), this, [this] {
+        if (auto *tab = currentQuery()) qobject_cast<SqlEditor *>(tab->editor())->showSearch(true);
+    });
+    auto *historyDock = new QDockWidget(tr("Queryhistorie"), this);
+    historyDock->setObjectName("historyDock");
+    auto *historyPanel = new QWidget(historyDock);
+    auto *historyLayout = new QVBoxLayout(historyPanel);
+    auto *filter = new QLineEdit(historyPanel);
+    filter->setPlaceholderText(tr("Historie doorzoeken"));
+    historyLayout->addWidget(filter);
+    history = new QListWidget(historyPanel);
+    history->setObjectName("queryHistory");
+    history->setToolTip(tr("Dubbelklik opent SQL in een nieuwe tab zonder uitvoering. Maximaal 100 opdrachten van elk 64.000 tekens."));
+    historyLayout->addWidget(history);
+    auto *clearHistory = new QPushButton(tr("Historie wissen"), historyPanel);
+    historyLayout->addWidget(clearHistory);
+    connect(clearHistory, &QPushButton::clicked, this, [this] { settings.remove("editor/history"); refreshHistory(); });
+    connect(filter, &QLineEdit::textChanged, this, [this](const QString &text) {
+        history->setProperty("filter", text);
+        for (int i = 0; i < history->count(); ++i) {
+            auto *item = history->item(i);
+            item->setHidden(!item->toolTip().contains(text, Qt::CaseInsensitive));
+        }
+    });
+    connect(history, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *item) {
+        const auto entry = item->data(Qt::UserRole).toMap();
+        auto *tab = newQuery(entry.value("target").toString());
+        tab->selectConnection(entry.value("target").toString());
+        tab->editor()->setPlainText(entry.value("sql").toString());
+        tab->editor()->document()->setModified(true);
+    });
+    historyDock->setWidget(historyPanel);
+    addDockWidget(Qt::RightDockWidgetArea, historyDock);
+    tabifyDockWidget(savedDock, historyDock);
+    savedDock->raise();
+    refreshHistory();
     auto *view = menuBar()->addMenu(tr("&Beeld"));
+    view->addAction(historyDock->toggleViewAction());
     view->addAction(browser->toggleViewAction());
     view->addAction(savedDock->toggleViewAction());
     view->addAction(detailsDock->toggleViewAction());
@@ -276,7 +346,7 @@ PgAdmMain::PgAdmMain(QWidget *parent, const QString &settingsPath)
     statusBar()->addPermanentWidget(connectionLabel);
     statusBar()->showMessage(tr("Gereed — dubbelklik op een profiel om te verbinden."));
     loadProfiles();
-    newQuery();
+    restoreEditorTabs();
     restoreGeometry(settings.value("window/geometry").toByteArray());
     restoreState(settings.value("window/state").toByteArray());
     updateConnectionState();
@@ -284,6 +354,7 @@ PgAdmMain::PgAdmMain(QWidget *parent, const QString &settingsPath)
 
 PgAdmMain::~PgAdmMain()
 {
+    qDeleteAll(querySessions);
     qDeleteAll(sessions);
 }
 
@@ -299,7 +370,18 @@ QueryTab *PgAdmMain::newQuery(const QString &connection)
         settings.setValue(query->filePath().isEmpty() ? QString("query/columnWidths") : queryWidthsKey(query->filePath()), widths);
     });
     connect(query, &QueryTab::allResultsChanged, this, [this](bool enabled) { settings.setValue("query/allResults", enabled); });
-    connect(query, &QueryTab::connectionChanged, this, &PgAdmMain::updateQueryActions);
+    connect(query, &QueryTab::fullExportRequested, this, [this, query](bool excel) {
+        queries->setCurrentWidget(query);
+        exportFullResults(excel);
+    });
+    connect(query, &QueryTab::connectionChanged, this, [this, query] {
+        if (querySessions.contains(query) && queryTargets.value(query) != query->connectionId()) {
+            if (!confirmTransactionClose(query)) { query->selectConnection(queryTargets.value(query)); return; }
+            closeQuerySession(query);
+            query->appendMessage(tr("Vorige tabsessie gesloten; een nieuwe database krijgt een nieuwe sessie."));
+        }
+        updateQueryActions();
+    });
     query->setProperty("untitledName", tr("Query %1").arg(nextQuery++));
     queries->addTab(query, QString());
     queries->setCurrentWidget(query);
@@ -447,11 +529,13 @@ bool PgAdmMain::mayClose(QueryTab *query)
         QMessageBox::information(this, tr("Query wordt uitgevoerd"), tr("Annuleer eerst de query of wacht tot de uitvoering klaar is."));
         return false;
     }
-    if (!query->editor()->document()->isModified()) return true;
-    const auto answer = QMessageBox::question(this, tr("Niet-opgeslagen query"),
-        tr("Wijzigingen in %1 opslaan?").arg(queries->tabText(queries->indexOf(query))),
-        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
-    return answer == QMessageBox::Discard || (answer == QMessageBox::Save && saveQuery(query));
+    if (query->editor()->document()->isModified()) {
+        const auto answer = QMessageBox::question(this, tr("Niet-opgeslagen query"),
+            tr("Wijzigingen in %1 opslaan?").arg(queries->tabText(queries->indexOf(query))),
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+        if (answer != QMessageBox::Discard && !(answer == QMessageBox::Save && saveQuery(query))) return false;
+    }
+    return confirmTransactionClose(query);
 }
 
 // Close only after mayClose succeeds; retain an empty editor when the last tab disappears.
@@ -459,12 +543,13 @@ void PgAdmMain::closeQuery(int index)
 {
     auto *query = qobject_cast<QueryTab *>(queries->widget(index));
     if (!query || !mayClose(query)) return;
+    closeQuerySession(query);
     queries->removeTab(index);
     query->deleteLater();
     if (queries->count() == 0) newQuery();
 }
 
-// Check every editor before saving window state; cancellation leaves the window open.
+// Preserve open editors on normal exit; refuse running work and confirm transaction rollback.
 void PgAdmMain::closeEvent(QCloseEvent *event)
 {
     if (roleManager && !roleManager->mayClose()) { event->ignore(); return; }
@@ -475,12 +560,19 @@ void PgAdmMain::closeEvent(QCloseEvent *event)
         return;
     }
     for (int i = 0; i < queries->count(); ++i) {
-        if (!mayClose(qobject_cast<QueryTab *>(queries->widget(i)))) {
+        auto *tab = qobject_cast<QueryTab *>(queries->widget(i));
+        if (tab->isRunning() || !confirmTransactionClose(tab)) {
+            if (tab->isRunning()) QMessageBox::information(this, tr("Query wordt uitgevoerd"), tr("Annuleer eerst de query of wacht tot de uitvoering klaar is."));
             event->ignore();
             return;
         }
     }
     settings.setValue("window/geometry", saveGeometry());
+    if (!saveEditorTabs()) {
+        QMessageBox::warning(this, tr("Tabs bewaren mislukt"), tr("De instellingen konden niet worden opgeslagen. Het venster blijft open om verlies van SQL te voorkomen. Controleer schijfruimte en schrijfrechten."));
+        event->ignore();
+        return;
+    }
     settings.setValue("window/state", saveState());
     event->accept();
 }
@@ -607,6 +699,9 @@ bool PgAdmMain::serverInUse(const QString &id) const
 {
     if (roleManager && roleManagerServer == id) return true;
     if (databaseTask && databaseTask->isRunning() && maintenanceServer == id) return true;
+    for (auto it = querySessions.cbegin(); it != querySessions.cend(); ++it)
+        if (sessionProfiles.value(queryTargets.value(it.key())).value("serverId").toString() == id &&
+            it.value()->state() != PgSession::Disconnected) return true;
     for (const auto &key : sessionProfiles.keys()) {
         if (sessionProfiles.value(key).value("serverId").toString() != id) continue;
         auto *session = sessions.value(key);
@@ -782,6 +877,16 @@ void PgAdmMain::disconnectProfile()
     const auto serverId = selectedProfile().value("id").toString();
     const auto selected = selectedConnectionId();
     const bool all = objects->selectedDatabase().isEmpty();
+    for (auto *tab : querySessions.keys()) {
+        const auto target = queryTargets.value(tab);
+        if ((all && sessionProfiles.value(target).value("serverId").toString() == serverId) || (!all && target == selected))
+            if (!tab->isRunning() && !confirmTransactionClose(tab)) return;
+    }
+    for (auto *tab : querySessions.keys()) {
+        const auto target = queryTargets.value(tab);
+        if ((all && sessionProfiles.value(target).value("serverId").toString() == serverId) || (!all && target == selected))
+            closeQuerySession(tab);
+    }
     for (const auto &key : sessionProfiles.keys()) {
         if ((all && sessionProfiles.value(key).value("serverId").toString() == serverId) || (!all && key == selected)) {
             pendingPasswordReads.remove(key);
@@ -809,6 +914,12 @@ void PgAdmMain::updateConnectionState()
     const bool taskAvailable = !databaseTask || !databaseTask->isRunning();
     const bool taskNode = kind == CatalogTree::Server || kind == CatalogTree::DatabaseList || kind == CatalogTree::Database;
     const bool allowed = ready && taskAvailable && taskNode && selectedItem && !selectedItem->isDisabled();
+    const auto relationKind = selectedItem ? selectedItem->data(0, CatalogTree::RelationKind).toString() : QString();
+    const bool table = kind == CatalogTree::Relation && (relationKind == "r" || relationKind == "p" || relationKind == "m");
+    const bool canMaintain = ready && taskAvailable && (taskNode || table) && selectedItem && !selectedItem->isDisabled();
+    vacuumAction->setEnabled(canMaintain);
+    analyzeAction->setEnabled(canMaintain);
+    reindexAction->setEnabled(canMaintain);
     backupAction->setEnabled(allowed);
     restoreAction->setEnabled(allowed);
     createDatabaseAction->setEnabled(allowed);
@@ -897,7 +1008,11 @@ void PgAdmMain::openDatabaseTask(DatabaseJob::Operation operation)
         if (!error.isEmpty()) { QMessageBox::information(this, tr("Database verwijderen"), error); return; }
     }
     delete databaseTask;
-    auto *dialog = new DatabaseTaskDialog(operation, profile, serverPasswords.value(id), database, this);
+    auto *item = objects->currentItem();
+    const bool relation = operation >= DatabaseJob::Vacuum && item && item->data(0, CatalogTree::NodeKind).toInt() == CatalogTree::Relation;
+    const auto schemaName = relation ? item->data(0, CatalogTree::SchemaName).toString() : QString();
+    const auto relationName = relation ? item->data(0, CatalogTree::RelationName).toString() : QString();
+    auto *dialog = new DatabaseTaskDialog(operation, profile, serverPasswords.value(id), database, this, schemaName, relationName);
     databaseTask = dialog;
     connect(dialog, &DatabaseTaskDialog::startRequested, this, [this, dialog, operation, id, profile] {
         if (roleManager && roleManagerServer == id && roleManager->isApplying()) {
@@ -973,6 +1088,16 @@ void PgAdmMain::openRoleManager(const QString &profileId, const QString &suggest
 // Refuse active user queries, then close only our target sessions and metadata before restore/drop.
 bool PgAdmMain::releaseDatabase(const QString &profileId, const QString &database)
 {
+    QList<QueryTab *> tabs;
+    for (auto *tab : querySessions.keys()) {
+        const auto runtime = sessionProfiles.value(queryTargets.value(tab));
+        if (runtime.value("serverId").toString() != profileId || runtime.value("database").toString() != database) continue;
+        if (tab->isRunning()) {
+            QMessageBox::information(this, tr("Query wordt uitgevoerd"), tr("Annuleer eerst de actieve query op deze database of wacht tot deze klaar is."));
+            return false;
+        }
+        tabs.append(tab);
+    }
     QStringList targets;
     for (auto entry = sessionProfiles.cbegin(); entry != sessionProfiles.cend(); ++entry) {
         if (entry.value().value("serverId").toString() != profileId || entry.value().value("database").toString() != database) continue;
@@ -986,6 +1111,7 @@ bool PgAdmMain::releaseDatabase(const QString &profileId, const QString &databas
     objects->setDatabaseBusy(profileId, database, true);
     objectDetails->clear();
     objects->metadata()->closeDatabase(profileId, database);
+    for (auto *tab : tabs) closeQuerySession(tab);
     for (const auto &id : targets) {
         pendingPasswordReads.remove(id);
         openQueryAfterConnect.remove(id);
@@ -1023,29 +1149,156 @@ void PgAdmMain::updateObjectProperties()
         item->data(0, CatalogTree::ColumnName).toString());
 }
 
-// Allow execution only for an idle target session; expose cancellation for the running tab.
+// Allocate one private worker lazily; result/notice routing never uses another tab's connection.
+PgSession *PgAdmMain::querySession(QueryTab *tab)
+{
+    auto *existing = querySessions.value(tab);
+    if (existing && existing->state() != PgSession::Disconnected) return existing;
+    int active = 0;
+    for (auto *session : querySessions) if (session->state() != PgSession::Disconnected) ++active;
+    if (active >= 8) {
+        QMessageBox::information(this, tr("Verbindingslimiet"), tr("Sluit of verbreek eerst een van de acht actieve querytabsessies."));
+        return nullptr;
+    }
+    if (existing) return existing;
+    auto *session = new PgSession(tab);
+    session->setObjectName("querySession");
+    querySessions[tab] = session;
+    queryTargets[tab] = tab->connectionId();
+    connect(session, &PgSession::stateChanged, tab, [this] { updateQueryActions(); });
+    connect(session, &PgSession::resultReady, tab, [tab](const QueryResult &result) { tab->appendResult(result); });
+    connect(session, &PgSession::notice, tab, [tab](const QString &message) { tab->appendMessage(message); });
+    connect(session, &PgSession::executionFinished, tab, [this, tab, session](bool success, const QString &transaction) {
+        if (executing.take(session)) tab->finishExecution(success, transaction);
+        updateQueryActions();
+    });
+    connect(session, &PgSession::connected, tab, [this, tab, session](const QVariantMap &info) {
+        tab->appendMessage(tr("Eigen tabsessie | Backend PID: %1").arg(info.value("backendPid").toString()));
+        if (!pendingScripts.contains(session)) return;
+        const auto request = pendingScripts.take(session);
+        const bool accepted = request.exportPath.isEmpty() ? session->execute(request.sql) :
+            session->executeToFile(request.sql, request.exportPath, request.excel, request.widths);
+        if (accepted) recordHistory(request.sql, tab);
+        if (!accepted) {
+            executing.remove(session);
+            tab->finishExecution(false, tr("Verbinding is niet beschikbaar"));
+        }
+    });
+    connect(session, &PgSession::failed, tab, [this, tab, session](const QString &message, bool) {
+        pendingScripts.remove(session);
+        tab->appendMessage(message);
+        if (executing.take(session)) tab->finishExecution(false, tr("Tabsessie niet verbonden"));
+        updateQueryActions();
+    });
+    connect(session, &PgSession::disconnected, tab, [this, tab, session] {
+        pendingScripts.remove(session);
+        if (executing.take(session)) tab->finishExecution(false, tr("Tabsessie gesloten"));
+        updateQueryActions();
+    });
+    connect(session, &PgSession::exportProgress, tab, &QueryTab::updateFullExport);
+    connect(session, &PgSession::exportFinished, tab, [tab](bool success, const QString &path, qint64 rows, const QString &message) {
+        tab->appendMessage(success ? tr("Volledig bestand opgeslagen: %1 (%2 gegevensrijen)").arg(path).arg(rows) :
+            tr("Volledige export niet opgeslagen: %1").arg(message));
+    });
+    return session;
+}
+
+// Release exactly one tab's backend and pending execution; PostgreSQL rolls back its transaction.
+void PgAdmMain::closeQuerySession(QueryTab *tab)
+{
+    auto *session = querySessions.take(tab);
+    queryTargets.remove(tab);
+    if (!session) return;
+    pendingScripts.remove(session);
+    executing.remove(session);
+    tab->finishExecution(!tab->isRunning(), session->hasOpenTransaction() ?
+        tr("Tabsessie gesloten; transactie teruggedraaid") : tr("Tabsessie gesloten"));
+    session->disconnect(tab);
+    delete session;
+}
+
+// Ask before closing or retargeting a tab with actual uncommitted work, including failed transactions.
+bool PgAdmMain::confirmTransactionClose(QueryTab *tab)
+{
+    auto *session = querySessions.value(tab);
+    if (!session || !session->hasOpenTransaction()) return true;
+    return QMessageBox::question(this, tr("Transactie open"),
+        tr("Deze tab heeft een open transactie. De verbinding sluiten en deze transactie terugdraaien?"),
+        QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) == QMessageBox::Yes;
+}
+
+// Allow an idle tab to execute or lazily connect; cancellation belongs to the running tab.
 void PgAdmMain::updateQueryActions()
 {
     auto *tab = currentQuery();
-    auto *session = tab ? sessions.value(tab->connectionId()) : nullptr;
-    runAction->setEnabled(tab && !tab->isRunning() && session && session->state() == PgSession::Connected && !session->isBusy());
+    auto *target = tab ? sessions.value(tab->connectionId()) : nullptr;
+    auto *session = querySessions.value(tab);
+    const bool available = tab && !tab->isRunning() && target && target->state() == PgSession::Connected &&
+        (!session || (!session->isBusy() && session->state() != PgSession::Connecting && session->state() != PgSession::Disconnecting));
+    runAction->setEnabled(available);
+    fullCsvAction->setEnabled(available);
+    fullXlsxAction->setEnabled(available);
+    for (int index = 0; index < queries->count(); ++index) {
+        auto *query = qobject_cast<QueryTab *>(queries->widget(index));
+        auto *control = sessions.value(query->connectionId());
+        auto *backend = querySessions.value(query);
+        query->setFullExportAvailable(control && control->state() == PgSession::Connected &&
+            (!backend || (!backend->isBusy() && backend->state() != PgSession::Connecting && backend->state() != PgSession::Disconnecting)));
+    }
     stopAction->setEnabled(tab && tab->isRunning());
 }
 
 // Resolve the current tab to its session and register result routing before dispatching the selected SQL.
 void PgAdmMain::runQuery()
 {
+    executeQuery();
+}
+
+// Choose a destination before any SQL, explicitly requesting a new full execution rather than replaying results.
+void PgAdmMain::exportFullResults(bool excel)
+{
+    if (!currentQuery() || !runAction->isEnabled()) return;
+    const auto extension = excel ? QString(".xlsx") : QString(".csv");
+    auto path = QFileDialog::getSaveFileName(this, tr("SQL/selectie uitvoeren en volledig exporteren"), "resultaat" + extension,
+        excel ? tr("Excel-bestanden (*.xlsx)") : tr("CSV-bestanden (*.csv)"));
+    if (path.isEmpty()) return;
+    if (!path.endsWith(extension, Qt::CaseInsensitive)) {
+        path += extension;
+        if (QFileInfo::exists(path) && QMessageBox::question(this, tr("Bestand overschrijven"), tr("'%1' bestaat al. Overschrijven?").arg(path)) != QMessageBox::Yes) return;
+    }
+    executeQuery(path, excel);
+}
+
+// Use the private tab backend once; the worker streams full rows before preview limits are applied.
+void PgAdmMain::executeQuery(const QString &exportPath, bool excel)
+{
     auto *tab = currentQuery();
-    auto *session = tab ? sessions.value(tab->connectionId()) : nullptr;
-    if (!tab || tab->isRunning() || !session || session->state() != PgSession::Connected || session->isBusy()) return;
+    if (!tab || !runAction->isEnabled()) return;
     const auto sql = tab->sqlToExecute();
     if (sql.size() > 8 * 1024 * 1024) {
         QMessageBox::warning(this, tr("Script te groot"), tr("De editor voert maximaal 8 miljoen tekens per keer uit."));
         return;
     }
+    auto *session = querySession(tab);
+    if (!session) return;
     tab->startExecution();
+    if (!exportPath.isEmpty()) tab->startFullExport(exportPath);
+    if (session->state() == PgSession::Connected)
+        tab->appendMessage(tr("Eigen tabsessie | Backend PID: %1").arg(session->information().value("backendPid").toString()));
     executing.insert(session, tab);
-    if (!session->execute(sql)) {
+    if (session->state() == PgSession::Disconnected) {
+        pendingScripts[session] = {sql, exportPath, excel, {}};
+        for (const auto &width : tab->columnWidths()) pendingScripts[session].widths.append(width.toInt());
+        const auto runtime = sessionProfiles.value(tab->connectionId());
+        session->open(runtime, serverPasswords.value(runtime.value("serverId").toString()));
+        updateQueryActions();
+        return;
+    }
+    QVector<int> widths;
+    for (const auto &width : tab->columnWidths()) widths.append(width.toInt());
+    const bool accepted = exportPath.isEmpty() ? session->execute(sql) : session->executeToFile(sql, exportPath, excel, widths);
+    if (accepted) recordHistory(sql, tab);
+    if (!accepted) {
         executing.remove(session);
         tab->finishExecution(false, tr("Verbinding is niet beschikbaar"));
     }
@@ -1055,6 +1308,8 @@ void PgAdmMain::runQuery()
 // Find the session executing the current tab and request asynchronous PostgreSQL cancellation.
 void PgAdmMain::cancelQuery()
 {
+    auto *session = querySessions.value(currentQuery());
+    if (session && pendingScripts.contains(session)) { session->close(); return; }
     for (auto it = executing.cbegin(); it != executing.cend(); ++it)
         if (it.value() == currentQuery()) it.key()->cancel();
 }

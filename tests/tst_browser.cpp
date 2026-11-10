@@ -12,6 +12,9 @@
 #include "databasetaskdialog.h"
 #include "rolemanager.h"
 #include "rolesql.h"
+#include "sqleditor.h"
+#include <QCompleter>
+#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
@@ -40,6 +43,8 @@
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QPointer>
+#include <QToolButton>
 #include <QTest>
 #include <QUuid>
 
@@ -193,7 +198,7 @@ private slots:
             QCOMPARE(panel->library().category("Nieuw overzicht"), QString("LTS / beheer"));
             auto *tabs = reopened.findChild<QTabWidget *>("queryTabs");
             auto *tab = qobject_cast<QueryTab *>(tabs->currentWidget());
-            QVERIFY(tab->columnWidths().isEmpty());
+            QCOMPARE(tab->columnWidths(), QVariantList{QVariant(347)});
             panel->openRequested("Nieuw overzicht");
             tab = qobject_cast<QueryTab *>(tabs->currentWidget());
             QCOMPARE(tab->columnWidths(), QVariantList{QVariant(347)});
@@ -239,6 +244,196 @@ private slots:
 
     // Cancellation must preserve the caller's profile and secret; accepted secrets
     // stay separate from persisted profile fields after the dialog extraction.
+    void editorSearchAndCompletion()
+    {
+        SqlEditor editor;
+        editor.resize(900, 500);
+        editor.show();
+        const QString original = "SELECT name, surname FROM people;\nselect name;";
+        editor.setPlainText(original);
+        editor.showSearch(true);
+        auto *needle = editor.findChild<QLineEdit *>("findText");
+        auto *replacement = editor.findChild<QLineEdit *>("replaceText");
+        needle->setText("name");
+        replacement->setText("name_name");
+        editor.findChildren<QCheckBox *>().last()->setChecked(true);
+        editor.findChild<QPushButton *>("replaceAll")->click();
+        QCOMPARE(editor.toPlainText(), QString("SELECT name_name, surname FROM people;\nselect name_name;"));
+        editor.undo();
+        QCOMPARE(editor.toPlainText(), original);
+        needle->setText("SELECT");
+        replacement->setText("FETCH");
+        editor.findChildren<QCheckBox *>().first()->setChecked(true);
+        editor.findChild<QPushButton *>("replaceAll")->click();
+        QCOMPARE(editor.toPlainText(), QString("FETCH name, surname FROM people;\nselect name;"));
+        editor.undo();
+        needle->setText("name");
+        replacement->setText("label");
+        editor.moveCursor(QTextCursor::Start);
+        editor.findNext();
+        editor.findChild<QPushButton *>("replaceOne")->click();
+        QCOMPARE(editor.toPlainText(), QString("SELECT label, surname FROM people;\nselect name;"));
+        editor.undo();
+        replacement->clear();
+        editor.findChild<QPushButton *>("replaceAll")->click();
+        QCOMPARE(editor.toPlainText(), QString("SELECT , surname FROM people;\nselect ;"));
+        editor.undo();
+        editor.moveCursor(QTextCursor::End);
+        editor.findNext();
+        QCOMPARE(editor.textCursor().selectionStart(), 7);
+        editor.findNext(true);
+        QVERIFY(editor.textCursor().selectionStart() > 30);
+        needle->setText("missing");
+        const int position = editor.textCursor().position();
+        editor.findNext();
+        QCOMPARE(editor.textCursor().position(), position);
+        editor.findChild<QDialog *>()->hide();
+        editor.activateWindow();
+        editor.setFocus();
+        QTRY_VERIFY(editor.isActiveWindow());
+        QTRY_VERIFY(editor.hasFocus());
+        QTest::keyClick(&editor, Qt::Key_F, Qt::ControlModifier);
+        QTRY_VERIFY(editor.findChild<QDialog *>()->isVisible());
+        editor.findChild<QDialog *>()->hide();
+        editor.setPlainText("SEL");
+        editor.moveCursor(QTextCursor::End);
+        editor.activateWindow();
+        editor.setFocus();
+        QTest::keyClick(&editor, Qt::Key_Space, Qt::ControlModifier);
+        auto *completion = editor.findChild<QCompleter *>();
+        QTRY_VERIFY(completion->popup()->isVisible());
+        QCOMPARE(completion->currentCompletion(), QString("SELECT"));
+        QVERIFY(completion->popup()->currentIndex().isValid());
+        QTest::keyClick(completion->popup(), Qt::Key_Return);
+        QCOMPARE(editor.toPlainText(), QString("SELECT"));
+        editor.undo();
+        QCOMPARE(editor.toPlainText(), QString("SEL"));
+    }
+
+    void editorTabsRestore()
+    {
+        QTemporaryDir temporary;
+        const auto settingsPath = temporary.filePath("settings.ini");
+        const auto sqlPath = temporary.filePath("external.sql");
+        const auto crlfPath = temporary.filePath("windows.sql");
+        { QFile file(crlfPath); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("SELECT 4;\r\nSELECT 5;"); }
+        { QFile file(sqlPath); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("SELECT 2;"); }
+        {
+            PgAdmMain window(nullptr, settingsPath);
+            auto *tabs = window.findChild<QTabWidget *>("queryTabs");
+            auto *draft = qobject_cast<QueryTab *>(tabs->currentWidget());
+            draft->editor()->setPlainText("SELECT 'unsaved';");
+            draft->editor()->document()->setModified(true);
+            draft->selectConnection("unconnected/profile");
+            draft->setColumnWidths({333, 222});
+            auto cursor = draft->editor()->textCursor();
+            cursor.setPosition(9);
+            draft->editor()->setTextCursor(cursor);
+            window.findChild<QAction *>("newQueryAction")->trigger();
+            auto *file = qobject_cast<QueryTab *>(tabs->currentWidget());
+            file->setFilePath(sqlPath);
+            file->editor()->setPlainText("SELECT 2;");
+            file->editor()->document()->setModified(false);
+            window.findChild<QAction *>("newQueryAction")->trigger();
+            auto *crlf = qobject_cast<QueryTab *>(tabs->currentWidget());
+            crlf->setFilePath(crlfPath);
+            crlf->editor()->setPlainText("SELECT 4;\nSELECT 5;");
+            crlf->editor()->document()->setModified(false);
+            tabs->setCurrentIndex(0);
+            QVERIFY(window.close());
+        }
+        { QFile file(sqlPath); QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate)); file.write("SELECT 3;"); }
+        PgAdmMain reopened(nullptr, settingsPath);
+        auto *tabs = reopened.findChild<QTabWidget *>("queryTabs");
+        QCOMPARE(tabs->count(), 3);
+        QCOMPARE(tabs->currentIndex(), 0);
+        auto *draft = qobject_cast<QueryTab *>(tabs->widget(0));
+        QCOMPARE(draft->editor()->toPlainText(), QString("SELECT 'unsaved';"));
+        QVERIFY(draft->editor()->document()->isModified());
+        QCOMPARE(draft->editor()->textCursor().position(), 9);
+        QCOMPARE(draft->connectionId(), QString("unconnected/profile"));
+        QCOMPARE(draft->columnWidths(), QVariantList({333, 222}));
+        auto *file = qobject_cast<QueryTab *>(tabs->widget(1));
+        QCOMPARE(file->editor()->toPlainText(), QString("SELECT 2;"));
+        QVERIFY(file->editor()->document()->isModified());
+        QVERIFY(!qobject_cast<QueryTab *>(tabs->widget(2))->editor()->document()->isModified());
+        QVERIFY(reopened.findChildren<PgSession *>().isEmpty());
+        QVERIFY(!reopened.findChild<QAction *>("runQueryAction")->isEnabled());
+        QVERIFY(reopened.close());
+        const auto blockedPath = temporary.filePath("blocked.ini");
+        QVERIFY(QDir().mkpath(blockedPath));
+        PgAdmMain blocked(nullptr, blockedPath);
+        auto *blockedTabs = blocked.findChild<QTabWidget *>("queryTabs");
+        auto *unsaved = qobject_cast<QueryTab *>(blockedTabs->currentWidget());
+        unsaved->editor()->setPlainText("SELECT 'keep me';");
+        QTimer::singleShot(0, &blocked, [] {
+            if (auto *message = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
+                message->button(QMessageBox::Ok)->click();
+        });
+        QVERIFY(!blocked.close());
+        QCOMPARE(unsaved->editor()->toPlainText(), QString("SELECT 'keep me';"));
+    }
+
+    void queryHistory()
+    {
+        if (!qEnvironmentVariableIsSet("PGADM_TEST_PORT")) QSKIP("Requires disposable PostgreSQL 18.");
+        QTemporaryDir temporary;
+        const auto settingsPath = temporary.filePath("settings.ini");
+        {
+            QSettings settings(settingsPath, QSettings::IniFormat);
+            settings.setValue("connections/profiles", QVariantList{profile()});
+            QVariantList old;
+            for (int i = 0; i < 100; ++i) old.append(QVariantMap{{"sql", QString("old %1").arg(i)}});
+            settings.setValue("editor/history", old);
+        }
+        {
+            PgAdmMain window(nullptr, settingsPath);
+            window.show();
+            auto *tree = window.findChild<CatalogTree *>("catalogTree");
+            tree->setCurrentItem(tree->topLevelItem(0));
+            window.findChild<QAction *>("connectProfileAction")->trigger();
+            auto *run = window.findChild<QAction *>("runQueryAction");
+            QTRY_VERIFY_WITH_TIMEOUT(run->isEnabled(), 10000);
+            auto *tabs = window.findChild<QTabWidget *>("queryTabs");
+            auto *tab = qobject_cast<QueryTab *>(tabs->currentWidget());
+            tab->editor()->setPlainText("SELECT 42; SELECT pg_sleep(30);");
+            auto cursor = tab->editor()->textCursor();
+            cursor.setPosition(0);
+            cursor.setPosition(10, QTextCursor::KeepAnchor);
+            tab->editor()->setTextCursor(cursor);
+            run->trigger();
+            QTRY_VERIFY_WITH_TIMEOUT(!tab->isRunning(), 5000);
+            auto *list = window.findChild<QListWidget *>("queryHistory");
+            QCOMPARE(list->count(), 100);
+            QCOMPARE(list->item(0)->data(Qt::UserRole).toMap().value("sql").toString(), QString("SELECT 42;"));
+            QCOMPARE(list->item(99)->data(Qt::UserRole).toMap().value("sql").toString(), QString("old 98"));
+            const int count = tabs->count();
+            list->itemDoubleClicked(list->item(0));
+            QCOMPARE(tabs->count(), count + 1);
+            auto *copy = qobject_cast<QueryTab *>(tabs->currentWidget());
+            QCOMPARE(copy->editor()->toPlainText(), QString("SELECT 42;"));
+            QVERIFY(!copy->findChild<PgSession *>());
+            QVERIFY(!copy->isRunning());
+            tab->editor()->setPlainText("--" + QString(65000, 'x') + "\nSELECT 1;");
+            tabs->setCurrentWidget(tab);
+            run->trigger();
+            QTRY_VERIFY_WITH_TIMEOUT(!tab->isRunning(), 5000);
+            QCOMPARE(list->count(), 100);
+            QCOMPARE(list->item(0)->data(Qt::UserRole).toMap().value("sql").toString(), QString("SELECT 42;"));
+            window.resize(1400, 850);
+            window.findChild<QDockWidget *>("historyDock")->raise();
+            QPixmap preview(window.size());
+            window.render(&preview);
+            QVERIFY(preview.save("editor-comfort-preview.png"));
+            QVERIFY(window.close());
+        }
+        PgAdmMain reopened(nullptr, settingsPath);
+        auto *list = reopened.findChild<QListWidget *>("queryHistory");
+        QCOMPARE(list->count(), 100);
+        QCOMPARE(list->item(0)->data(Qt::UserRole).toMap().value("sql").toString(), QString("SELECT 42;"));
+        QVERIFY(reopened.findChildren<PgSession *>().isEmpty());
+    }
+
     void profileDialogKeepsSecretsSeparate()
     {
         auto edited = profile();
@@ -1024,6 +1219,290 @@ private slots:
         QVERIFY(targetDone.first().first().toBool());
         done.clear();
         QVERIFY(admin.execute("DROP ROLE " + role + "; DROP ROLE " + parent + ";"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 5000);
+        QVERIFY(done.first().first().toBool());
+    }
+
+    void fullExportFromQueryTab()
+    {
+        if (!qEnvironmentVariableIsSet("PGADM_TEST_PORT")) QSKIP("Requires disposable PostgreSQL 18.");
+        QTemporaryDir directory;
+        const auto settingsPath = directory.filePath("settings.ini");
+        { QSettings settings(settingsPath, QSettings::IniFormat); settings.setValue("connections/profiles", QVariantList{profile()}); }
+        PgAdmMain window(nullptr, settingsPath);
+        window.show();
+        auto *tree = window.findChild<CatalogTree *>("catalogTree");
+        tree->setCurrentItem(tree->topLevelItem(0));
+        auto *csvAction = window.findChild<QAction *>("fullResultCsvAction");
+        QVERIFY(!csvAction->isEnabled());
+        window.findChild<QAction *>("connectProfileAction")->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(csvAction->isEnabled(), 10000);
+        auto *tabs = window.findChild<QTabWidget *>("queryTabs");
+        auto *tab = qobject_cast<QueryTab *>(tabs->currentWidget());
+        tab->setAllResults(false); // Full-file output still contains every statement.
+        tab->editor()->setPlainText("CREATE TEMP TABLE full_ui (id int); INSERT INTO full_ui VALUES (1);\n-- @resultaat: Alle rijen\nSELECT generate_series(1,25001) AS id;\nSELECT count(*) AS eenmaal FROM full_ui;");
+        auto *button = tab->findChild<QToolButton *>("fullResultExportButton");
+        QVERIFY(button && button->isEnabled());
+        QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+        QTimer::singleShot(0, &window, [] { if (auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) dialog->reject(); });
+        csvAction->trigger();
+        QVERIFY(!tab->findChild<PgSession *>("querySession")); // Cancelled chooser executed nothing.
+        const auto destination = directory.filePath("full-ui.csv");
+        QTimer::singleShot(0, &window, [destination] {
+            if (auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
+                dialog->selectFile(destination);
+                QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+            }
+        });
+        button->menu()->actions().first()->trigger();
+        QVERIFY(tab->isRunning());
+        QVERIFY(!button->isEnabled());
+        auto *session = tab->findChild<PgSession *>("querySession");
+        QVERIFY(session);
+        QSignalSpy exported(session, &PgSession::exportFinished);
+        QTRY_VERIFY_WITH_TIMEOUT(!tab->isRunning(), 15000);
+        QCOMPARE(exported.count(), 1);
+        QVERIFY(exported.first().first().toBool());
+        QCOMPARE(exported.first().at(2).toLongLong(), 25002LL);
+        QFile file(destination);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const auto bytes = file.readAll();
+        QVERIFY(bytes.contains("Alle rijen"));
+        QVERIFY(bytes.contains("\"25001\"\r\n"));
+        QVERIFY(bytes.contains("eenmaal"));
+        QVERIFY(bytes.contains("\"1\"\r\n"));
+        auto *view = tab->findChild<QTableView *>("queryResults");
+        auto *model = qobject_cast<ResultModel *>(view->model());
+        QVERIFY(model->rowCount() < 20); // Only the last result is displayed.
+        QVERIFY(button->isEnabled());
+        QPixmap image(window.size());
+        window.render(&image);
+        QVERIFY(image.save("full-export-preview.png"));
+        QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, false);
+    }
+
+    void maintenanceSqlValidation()
+    {
+        QString error;
+        QCOMPARE(DatabaseJob::maintenanceSql(DatabaseJob::Vacuum, "postgres", "odd\"schema", "table';--", true, true, &error),
+            QString("VACUUM (VERBOSE, ANALYZE) \"odd\"\"schema\".\"table';--\";"));
+        QVERIFY(error.isEmpty());
+        QCOMPARE(DatabaseJob::maintenanceSql(DatabaseJob::Analyze, "postgres", {}, {}, false, true, &error), QString("ANALYZE (VERBOSE);"));
+        QCOMPARE(DatabaseJob::maintenanceSql(DatabaseJob::Reindex, "odd\"db", {}, {}, true, true, &error),
+            QString("REINDEX (VERBOSE) DATABASE CONCURRENTLY \"odd\"\"db\";"));
+        QVERIFY(DatabaseJob::maintenanceSql(DatabaseJob::Drop, "postgres", {}, {}, true, true, &error).isEmpty());
+        QVERIFY(!error.isEmpty());
+        QVERIFY(DatabaseJob::maintenanceSql(DatabaseJob::Vacuum, "postgres", "public", {}, true, true, &error).isEmpty());
+        QVERIFY(!error.isEmpty());
+    }
+
+    void independentQueryTabs()
+    {
+        if (!qEnvironmentVariableIsSet("PGADM_TEST_PORT")) QSKIP("Requires disposable PostgreSQL 18.");
+        QTemporaryDir directory;
+        const auto settingsPath = directory.filePath("settings.ini");
+        { QSettings settings(settingsPath, QSettings::IniFormat); settings.setValue("connections/profiles", QVariantList{profile()}); }
+        const auto table = "tab_isolation_" + suffix;
+        PgSession admin;
+        QSignalSpy connected(&admin, &PgSession::connected);
+        admin.open(profile());
+        QTRY_COMPARE_WITH_TIMEOUT(connected.count(), 1, 5000);
+        QSignalSpy adminDone(&admin, &PgSession::executionFinished);
+        QVERIFY(admin.execute("CREATE TABLE " + table + " (id integer);"));
+        QTRY_COMPARE_WITH_TIMEOUT(adminDone.count(), 1, 5000);
+        QVERIFY(adminDone.first().first().toBool());
+
+        PgAdmMain window(nullptr, settingsPath);
+        window.show();
+        auto *tree = window.findChild<CatalogTree *>("catalogTree");
+        tree->setCurrentItem(tree->topLevelItem(0));
+        window.findChild<QAction *>("connectProfileAction")->trigger();
+        auto *run = window.findChild<QAction *>("runQueryAction");
+        QTRY_VERIFY_WITH_TIMEOUT(run->isEnabled(), 10000);
+        auto *tabs = window.findChild<QTabWidget *>("queryTabs");
+        auto *a = qobject_cast<QueryTab *>(tabs->currentWidget());
+        QVERIFY(!a->findChild<PgSession *>("querySession"));
+        a->editor()->setPlainText("BEGIN; CREATE TEMP TABLE private_tab (id int); SET application_name='private_a'; INSERT INTO " + table + " VALUES (1);");
+        run->trigger();
+        QPointer<PgSession> aSession = a->findChild<PgSession *>("querySession");
+        QVERIFY(aSession);
+        QTRY_VERIFY_WITH_TIMEOUT(!a->isRunning(), 10000);
+        QVERIFY(aSession->hasOpenTransaction());
+        const auto aPid = aSession->information().value("backendPid").toInt();
+
+        window.findChild<QAction *>("newQueryAction")->trigger();
+        auto *b = qobject_cast<QueryTab *>(tabs->currentWidget());
+        QCOMPARE(b->connectionId(), a->connectionId());
+        QVERIFY(!b->findChild<PgSession *>("querySession"));
+        b->editor()->setPlainText("SELECT count(*), to_regclass('pg_temp.private_tab') IS NULL, current_setting('application_name') <> 'private_a' FROM " + table + ";");
+        run->trigger();
+        auto *bSession = b->findChild<PgSession *>("querySession");
+        QVERIFY(bSession);
+        QSignalSpy bResults(bSession, &PgSession::resultReady);
+        QTRY_VERIFY_WITH_TIMEOUT(!b->isRunning(), 10000);
+        QVector<ResultCell> row;
+        for (const auto &batch : bResults)
+            for (const auto &values : qvariant_cast<QueryResult>(batch.first()).rows) row = values;
+        QCOMPARE(row.size(), 3);
+        QCOMPARE(row[0].text, QString("0"));
+        QCOMPARE(row[1].text, QString("t"));
+        QCOMPARE(row[2].text, QString("t"));
+        const auto bPid = bSession->information().value("backendPid").toInt();
+        QVERIFY(aPid != bPid);
+        QVERIFY(!bSession->hasOpenTransaction());
+
+        tabs->setCurrentWidget(a);
+        a->editor()->setPlainText("SELECT pg_sleep(30);");
+        run->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(aSession->isBusy(), 5000);
+        tabs->setCurrentWidget(b);
+        QVERIFY(run->isEnabled());
+        b->editor()->setPlainText("SELECT 42;");
+        run->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(!b->isRunning(), 5000);
+        QVERIFY(a->isRunning());
+        tabs->setCurrentWidget(a);
+        window.findChild<QAction *>("cancelQueryAction")->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(!a->isRunning(), 5000);
+        QVERIFY(aSession->hasOpenTransaction());
+        QVERIFY(!bSession->hasOpenTransaction());
+
+        a->editor()->document()->setModified(false);
+        const int count = tabs->count();
+        QTimer::singleShot(0, &window, [] { if (auto *dialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) dialog->button(QMessageBox::Cancel)->click(); });
+        tabs->tabCloseRequested(tabs->indexOf(a));
+        QCOMPARE(tabs->count(), count);
+        QVERIFY(aSession);
+        QTimer::singleShot(0, &window, [] { if (auto *dialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) dialog->button(QMessageBox::Yes)->click(); });
+        tabs->tabCloseRequested(tabs->indexOf(a));
+        QCOMPARE(tabs->count(), count - 1);
+        QVERIFY(aSession.isNull());
+        QCOMPARE(bSession->information().value("backendPid").toInt(), bPid);
+        bResults.clear();
+        tabs->setCurrentWidget(b);
+        b->editor()->setPlainText("SELECT count(*) FROM " + table + ";");
+        run->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(!b->isRunning(), 5000);
+        row.clear();
+        for (const auto &batch : bResults)
+            for (const auto &values : qvariant_cast<QueryResult>(batch.first()).rows) row = values;
+        QCOMPARE(row.first().text, QString("0")); // Closing A rolled back only A's insert.
+        QList<QueryTab *> extraTabs;
+        for (int index = 0; index < 7; ++index) {
+            window.findChild<QAction *>("newQueryAction")->trigger();
+            auto *extra = qobject_cast<QueryTab *>(tabs->currentWidget());
+            extraTabs.append(extra);
+            extra->editor()->setPlainText("SELECT 1;");
+            run->trigger();
+            QTRY_VERIFY_WITH_TIMEOUT(!extra->isRunning(), 5000);
+            QVERIFY(extra->findChild<PgSession *>("querySession"));
+            extra->editor()->document()->setModified(false);
+        }
+        window.findChild<QAction *>("newQueryAction")->trigger();
+        auto *limited = qobject_cast<QueryTab *>(tabs->currentWidget());
+        limited->editor()->setPlainText("SELECT 2;");
+        QTimer::singleShot(0, &window, [] { if (auto *dialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) dialog->accept(); });
+        run->trigger();
+        QVERIFY(!limited->findChild<PgSession *>("querySession"));
+        QVERIFY(!limited->isRunning());
+        tabs->tabCloseRequested(tabs->indexOf(extraTabs.first()));
+        tabs->setCurrentWidget(limited);
+        run->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(!limited->isRunning(), 5000);
+        QVERIFY(limited->findChild<PgSession *>("querySession"));
+        adminDone.clear();
+        QVERIFY(admin.execute("DROP TABLE " + table + ";"));
+        QTRY_COMPARE_WITH_TIMEOUT(adminDone.count(), 1, 5000);
+        QVERIFY(adminDone.first().first().toBool());
+    }
+
+    void maintenanceTasks()
+    {
+        if (!qEnvironmentVariableIsSet("PGADM_TEST_PORT")) QSKIP("Requires disposable PostgreSQL 18.");
+        const auto table = "maintenance_" + suffix;
+        PgSession admin;
+        QSignalSpy connected(&admin, &PgSession::connected);
+        admin.open(profile());
+        QTRY_COMPARE_WITH_TIMEOUT(connected.count(), 1, 5000);
+        QSignalSpy done(&admin, &PgSession::executionFinished);
+        QVERIFY(admin.execute("CREATE TABLE " + table + " (id integer PRIMARY KEY); INSERT INTO " + table + " SELECT generate_series(1,100); BEGIN;"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 5000);
+        QVERIFY(done.first().first().toBool());
+        QVERIFY(admin.hasOpenTransaction());
+        DatabaseJob job;
+        QString log;
+        connect(&job, &DatabaseJob::output, this, [&](const QString &message) { log += message; });
+        QSignalSpy finished(&job, &DatabaseJob::finished);
+        for (const auto operation : {DatabaseJob::Vacuum, DatabaseJob::Analyze}) {
+            finished.clear();
+            job.maintain(operation, profile(), {}, "postgres", "public", table);
+            QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 15000);
+            QVERIFY2(finished.first().first().toBool(), qPrintable(log));
+            QVERIFY(admin.hasOpenTransaction()); // Maintenance did not use/commit this session.
+        }
+        done.clear();
+        QVERIFY(admin.execute("ROLLBACK;"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 5000);
+        finished.clear();
+        job.maintain(DatabaseJob::Reindex, profile(), {}, "postgres", "public", table);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 20000);
+        QVERIFY2(finished.first().first().toBool(), qPrintable(log));
+
+        done.clear();
+        QVERIFY(admin.execute("BEGIN; LOCK TABLE " + table + " IN ACCESS EXCLUSIVE MODE;"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 5000);
+        finished.clear();
+        job.maintain(DatabaseJob::Reindex, profile(), {}, "postgres", "public", table, true, false);
+        QTest::qWait(250);
+        QVERIFY(job.isRunning());
+        job.cancel();
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 5000);
+        QVERIFY(!finished.first().first().toBool());
+        QVERIFY(admin.hasOpenTransaction());
+        done.clear();
+        QVERIFY(admin.execute("ROLLBACK;"));
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 5000);
+        finished.clear();
+        auto restricted = profile();
+        restricted["user"] = "pgadm_test_auth";
+        job.maintain(DatabaseJob::Reindex, restricted, "temporary-test-only", "postgres", "public", table, true, false);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 10000);
+        QVERIFY(!finished.first().first().toBool());
+
+        QTemporaryDir directory;
+        const auto settingsPath = directory.filePath("settings.ini");
+        { QSettings settings(settingsPath, QSettings::IniFormat); settings.setValue("connections/profiles", QVariantList{profile()}); }
+        PgAdmMain window(nullptr, settingsPath);
+        window.show();
+        auto *tree = window.findChild<CatalogTree *>("catalogTree");
+        auto *root = tree->topLevelItem(0);
+        tree->setCurrentItem(root);
+        window.findChild<QAction *>("connectProfileAction")->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(child(root->child(0), "postgres"), 10000);
+        auto *db = child(root->child(0), "postgres");
+        db->setExpanded(true);
+        QTRY_VERIFY_WITH_TIMEOUT(child(db, "public"), 10000);
+        auto *publicSchema = child(db, "public");
+        publicSchema->setExpanded(true);
+        QTRY_VERIFY_WITH_TIMEOUT(child(publicSchema, "Tabellen"), 10000);
+        auto *tables = child(publicSchema, "Tabellen");
+        tables->setExpanded(true);
+        QTRY_VERIFY_WITH_TIMEOUT(child(tables, table), 10000);
+        QVERIFY(triggerContextAction(window, tree, child(tables, table), "vacuumAction"));
+        auto *dialog = window.findChild<DatabaseTaskDialog *>("databaseTaskDialog");
+        QVERIFY(dialog);
+        QVERIFY(dialog->findChild<QPlainTextEdit *>("maintenanceSqlPreview")->toPlainText().contains("\"public\".\"" + table + "\""));
+        tree->setCurrentItem(root);
+        QSignalSpy completed(dialog, &DatabaseTaskDialog::completed);
+        dialog->findChild<QPushButton *>("databaseTaskStart")->click();
+        QTRY_COMPARE_WITH_TIMEOUT(completed.count(), 1, 15000);
+        QVERIFY(completed.first().first().toBool());
+        QVERIFY(dialog->findChild<QLabel *>("databaseTaskDuration")->text().startsWith("Totale duur:"));
+        QPixmap image(dialog->size());
+        dialog->render(&image);
+        QVERIFY(image.save("maintenance-preview.png"));
+        done.clear();
+        QVERIFY(admin.execute("DROP TABLE " + table + ";"));
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 5000);
         QVERIFY(done.first().first().toBool());
     }

@@ -20,12 +20,14 @@ class ObjectDetails;
 class QDockWidget;
 class DatabaseTaskDialog;
 class RoleManager;
+class QListWidget;
 
 // goal: Coordinate windows, local profiles, named scripts and live database sessions.
 // pre: Construct after QApplication on the GUI thread; settingsPath may isolate tests.
 // post: Startup reads local state only; no automatic database connection or SQL replay.
 // internals: ProfileDialog edits fields, PasswordStore handles secrets, CatalogTree
 //            owns metadata queues and QueryTabs receive batches from PgSessions.
+//            querySessions owns one lazy private backend per tab; control sessions stay separate.
 //            ObjectDetails borrows the catalog queue and reads DDL only on request.
 class PgAdmMain : public QMainWindow
 {
@@ -48,6 +50,12 @@ private:
     bool saveQuery(QueryTab *query, bool saveAs = false);
     bool mayClose(QueryTab *query);
     void closeQuery(int index);
+    // Persist editor contents and targets only; restoration creates no database sessions.
+    bool saveEditorTabs();
+    void restoreEditorTabs();
+    // Store bounded accepted SQL submissions; opening history creates a fresh inactive tab.
+    void recordHistory(const QString &sql, QueryTab *tab);
+    void refreshHistory();
     void loadProfiles();
     void editProfile(bool create);
     void removeProfile();
@@ -57,8 +65,14 @@ private:
     void disconnectProfile();
     void updateConnectionState();
     void runQuery();
+    void executeQuery(const QString &exportPath = {}, bool excel = false);
+    void exportFullResults(bool excel);
     void cancelQuery();
     void updateQueryActions();
+    // Create a private session lazily; closing/rebinding affects only this tab.
+    PgSession *querySession(QueryTab *tab);
+    void closeQuerySession(QueryTab *tab);
+    bool confirmTransactionClose(QueryTab *tab);
     QVariantMap profileById(const QString &id) const;
     QString selectedConnectionId() const;
     static QString connectionId(const QVariantMap &profile, const QString &database);
@@ -73,6 +87,7 @@ private:
     void openRoleManager(const QString &profileId, const QString &suggestedRole = {});
 
     QSettings settings;
+    QListWidget *history;
     QTabWidget *queries;
     CatalogTree *objects;
     SavedQueriesPanel *savedQueries;
@@ -83,6 +98,9 @@ private:
     QAction *restoreAction;
     QAction *createDatabaseAction;
     QAction *dropDatabaseAction;
+    QAction *vacuumAction;
+    QAction *analyzeAction;
+    QAction *reindexAction;
     DatabaseTaskDialog *databaseTask = nullptr;
     QString maintenanceServer;
     QString maintenanceDatabase;
@@ -91,6 +109,15 @@ private:
     QString roleManagerServer;
     PasswordStore *passwordStore;
     QHash<QString, PgSession *> sessions;
+    QHash<QueryTab *, PgSession *> querySessions;
+    QHash<QueryTab *, QString> queryTargets;
+    struct PendingQuery {
+        QString sql;
+        QString exportPath;
+        bool excel = false;
+        QVector<int> widths;
+    };
+    QHash<PgSession *, PendingQuery> pendingScripts;
     QHash<QString, QVariantMap> sessionProfiles;
     QHash<QString, QString> attemptedPasswords;
     QHash<QString, QString> serverPasswords;
@@ -103,6 +130,8 @@ private:
     QLabel *connectionLabel;
     QAction *runAction;
     QAction *stopAction;
+    QAction *fullCsvAction;
+    QAction *fullXlsxAction;
     QHash<PgSession *, QueryTab *> executing;
     int nextQuery = 1;
 };

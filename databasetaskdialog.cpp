@@ -1,4 +1,5 @@
 #include "databasetaskdialog.h"
+#include "sqlhighlighter.h"
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -18,13 +19,16 @@
 
 // Build one concrete task form and keep its host/database summary independent of tree selection.
 DatabaseTaskDialog::DatabaseTaskDialog(DatabaseJob::Operation operation, const QVariantMap &profile,
-                                     const QString &password, const QString &database, QWidget *parent)
-    : QDialog(parent), operation(operation), profile(profile), password(password), target(database), job(new DatabaseJob(this))
+                                     const QString &password, const QString &database, QWidget *parent,
+                                     const QString &schema, const QString &relation)
+    : QDialog(parent), operation(operation), profile(profile), password(password), target(database),
+      schema(schema), relation(relation), job(new DatabaseJob(this))
 {
     setObjectName("databaseTaskDialog");
     setAttribute(Qt::WA_DeleteOnClose);
     resize(820, 560);
-    const QStringList titles{tr("Databasebackup"), tr("Database herstellen"), tr("Database aanmaken"), tr("Database verwijderen")};
+    const QStringList titles{tr("Databasebackup"), tr("Database herstellen"), tr("Database aanmaken"), tr("Database verwijderen"),
+        tr("VACUUM"), tr("ANALYZE"), tr("REINDEX")};
     setWindowTitle(titles.at(operation));
     auto *layout = new QVBoxLayout(this);
     auto *summary = new QLabel(tr("Server: %1:%2 | Gebruiker: %3\nDatabase: %4")
@@ -37,6 +41,22 @@ DatabaseTaskDialog::DatabaseTaskDialog(DatabaseJob::Operation operation, const Q
     name->setObjectName("databaseTaskName");
     name->setReadOnly(operation != DatabaseJob::Create);
     form->addRow(tr("Databasenaam"), name);
+    const bool maintenance = operation >= DatabaseJob::Vacuum;
+    if (maintenance && !relation.isEmpty()) {
+        auto *table = new QLabel(schema + "." + relation, this);
+        table->setTextFormat(Qt::PlainText);
+        form->addRow(tr("Tabel"), table);
+    }
+    vacuumAnalyze = new QCheckBox(tr("Ook ANALYZE uitvoeren"), this);
+    vacuumAnalyze->setObjectName("maintenanceVacuumAnalyze");
+    vacuumAnalyze->setChecked(true);
+    reindexConcurrently = new QCheckBox(tr("CONCURRENTLY — schrijvers zo veel mogelijk laten doorwerken"), this);
+    reindexConcurrently->setObjectName("maintenanceReindexConcurrently");
+    reindexConcurrently->setChecked(true);
+    if (operation == DatabaseJob::Vacuum) form->addRow(vacuumAnalyze);
+    else vacuumAnalyze->hide();
+    if (operation == DatabaseJob::Reindex) form->addRow(reindexConcurrently);
+    else reindexConcurrently->hide();
     file = new QLineEdit(this);
     file->setObjectName("databaseTaskFile");
     file->setReadOnly(true);
@@ -76,6 +96,14 @@ DatabaseTaskDialog::DatabaseTaskDialog(DatabaseJob::Operation operation, const Q
         form->addRow(tr("Bevestiging"), confirmation);
     } else confirmation->hide();
     layout->addLayout(form);
+    maintenancePreview = new QPlainTextEdit(this);
+    maintenancePreview->setObjectName("maintenanceSqlPreview");
+    maintenancePreview->setReadOnly(true);
+    maintenancePreview->setMaximumHeight(75);
+    if (maintenance) {
+        new SqlHighlighter(maintenancePreview->document());
+        layout->addWidget(maintenancePreview);
+    } else maintenancePreview->hide();
     QString note;
     if (operation == DatabaseJob::Backup)
         note = tr("Backup van de volledige database, inclusief data. Een bestaand bestand wordt pas na een geslaagde backup vervangen.");
@@ -84,7 +112,10 @@ DatabaseTaskDialog::DatabaseTaskDialog(DatabaseJob::Operation operation, const Q
             "Archieven worden in één transactie hersteld. SQL-bestanden worden door psql uitgevoerd; commando's in het script zijn bepalend. Gebruik een vertrouwde backup.");
     else if (operation == DatabaseJob::Create)
         note = tr("Maak een lege UTF-8-database op basis van template0. De ingelogde gebruiker wordt eigenaar.");
-    else note = tr("Verwijder deze database en alle inhoud definitief. Eigen verbindingen worden gesloten en open transacties teruggedraaid. Andere clients worden niet geforceerd verbroken.");
+    else if (operation == DatabaseJob::Drop) note = tr("Verwijder deze database en alle inhoud definitief. Eigen verbindingen worden gesloten en open transacties teruggedraaid. Andere clients worden niet geforceerd verbroken.");
+    else note = tr("Uitvoering op een eigen verbinding, buiten querytransacties. Zonder tabel geldt de actie voor de hele database. "
+        "VACUUM gebruikt geen FULL. REINDEX zonder CONCURRENTLY blokkeert schrijvers; ook CONCURRENTLY kan wachten op andere transacties. "
+        "Annuleren draait reeds afgeronde onderdelen niet terug. Controleer waarschuwingen en overgeslagen objecten in de loguitvoer.");
     auto *description = new QLabel(note, this);
     description->setWordWrap(true);
     layout->addWidget(description);
@@ -132,6 +163,8 @@ DatabaseTaskDialog::DatabaseTaskDialog(DatabaseJob::Operation operation, const Q
     });
     connect(browseButton, &QPushButton::clicked, this, &DatabaseTaskDialog::browse);
     connect(name, &QLineEdit::textChanged, this, &DatabaseTaskDialog::updateControls);
+    connect(vacuumAnalyze, &QCheckBox::toggled, this, &DatabaseTaskDialog::updateControls);
+    connect(reindexConcurrently, &QCheckBox::toggled, this, &DatabaseTaskDialog::updateControls);
     connect(file, &QLineEdit::textChanged, this, &DatabaseTaskDialog::updateControls);
     connect(confirmation, &QLineEdit::textChanged, this, &DatabaseTaskDialog::updateControls);
     connect(format, &QComboBox::currentIndexChanged, this, [this] { file->clear(); });
@@ -173,6 +206,15 @@ void DatabaseTaskDialog::updateControls()
 {
     const bool busy = job->isRunning();
     bool valid = DatabaseJob::nameError(database()).isEmpty();
+    if (operation >= DatabaseJob::Vacuum) {
+        QString error;
+        const auto sql = DatabaseJob::maintenanceSql(operation, database(), schema, relation,
+            vacuumAnalyze->isChecked(), reindexConcurrently->isChecked(), &error);
+        maintenancePreview->setPlainText(error.isEmpty() ? sql : error);
+        valid = valid && error.isEmpty();
+    }
+    vacuumAnalyze->setEnabled(!started);
+    reindexConcurrently->setEnabled(!started);
     if (operation == DatabaseJob::Backup) valid = valid && !file->text().isEmpty();
     if (operation == DatabaseJob::Restore) {
         valid = valid && QFileInfo(file->text()).isFile();
@@ -205,7 +247,9 @@ void DatabaseTaskDialog::begin()
     if (operation == DatabaseJob::Backup) job->backup(profile, password, database(), file->text(), format->currentIndex() == 1);
     else if (operation == DatabaseJob::Restore) job->restore(profile, password, database(), file->text(), clean->isChecked(), skipOwners->isChecked());
     else if (operation == DatabaseJob::Create) job->create(profile, password, database());
-    else job->drop(profile, password, database());
+    else if (operation == DatabaseJob::Drop) job->drop(profile, password, database());
+    else job->maintain(operation, profile, password, database(), schema, relation,
+        vacuumAnalyze->isChecked(), reindexConcurrently->isChecked());
     updateControls();
 }
 

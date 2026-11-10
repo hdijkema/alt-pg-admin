@@ -137,6 +137,15 @@ SELECT $$waarde;$$;
         QVERIFY(original.open(QIODevice::ReadOnly));
         QCOMPARE(original.readAll(), originalBytes);
         original.close();
+        {
+            QtXlsxWriter cancelledWriter(xlsxPath);
+            QVERIFY(cancelledWriter.writeRow({"not published"}));
+            std::atomic_bool cancelled{true};
+            QVERIFY(!cancelledWriter.save(&cancelled).isEmpty());
+            QVERIFY(original.open(QIODevice::ReadOnly));
+            QCOMPARE(original.readAll(), originalBytes);
+            original.close();
+        }
         result.rows[0][1].text = QString("NUL") + QChar(0) + "tekst";
         QVERIFY(!ResultExporter::xlsx(xlsxPath, {result}, {}).isEmpty());
         QVERIFY(original.open(QIODevice::ReadOnly));
@@ -382,6 +391,147 @@ DO $body$ BEGIN RAISE NOTICE 'bericht; met puntkomma'; END $body$;
         QVERIFY(!model.lastPlan().isEmpty());
         QVERIFY(notices.count() > 0);
         QVERIFY(!session.isBusy());
+    }
+
+    void fullResultExport()
+    {
+        if (!qEnvironmentVariableIsSet("PGADM_TEST_PORT")) QSKIP("Requires disposable PostgreSQL 18.");
+        QTemporaryDir directory;
+        PgSession session;
+        QSignalSpy connected(&session, &PgSession::connected);
+        session.open(profile());
+        QTRY_COMPARE_WITH_TIMEOUT(connected.count(), 1, 5000);
+        QSignalSpy finished(&session, &PgSession::executionFinished);
+        QSignalSpy exported(&session, &PgSession::exportFinished);
+        ResultModel model;
+        connect(&session, &PgSession::resultReady, &model, [&model](const QueryResult &result) { model.append(result, true); });
+        QVERIFY(session.execute("CREATE TEMP TABLE export_effects (id integer);"));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 5000);
+        finished.clear();
+        model.clear();
+        const auto csvPath = directory.filePath("full.csv");
+        QVERIFY(session.executeToFile("INSERT INTO export_effects VALUES (1);\n-- @resultaat: Alles\n"
+            "SELECT i, repeat('x',700) AS tekst FROM generate_series(1,60001) i;\n"
+            "-- @resultaat: Leeg\nSELECT 1 AS kolom WHERE false;\n"
+            "-- @resultaat: Een uitvoering\nSELECT count(*) FROM export_effects;", csvPath, false));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 30000);
+        QVERIFY2(finished.first().first().toBool(), qPrintable(model.text().right(1000)));
+        QCOMPARE(exported.count(), 1);
+        QVERIFY(exported.first().first().toBool());
+        QCOMPARE(exported.first().at(2).toLongLong(), 60002LL);
+        QVERIFY(ResultExporter::isTruncated(model.results()));
+        QVERIFY(model.rowCount() < 20020);
+        QFile csv(csvPath);
+        QVERIFY(csv.open(QIODevice::ReadOnly));
+        QVERIFY(csv.size() > 40 * 1024 * 1024);
+        bool lastRow = false, emptySection = false, once = false;
+        qint64 dataRows = 0;
+        while (!csv.atEnd()) {
+            const auto line = csv.readLine();
+            if (line.endsWith(QByteArray(700, 'x') + "\"\r\n")) ++dataRows;
+            if (line.startsWith("\"60001\",")) lastRow = true;
+            if (line.contains("3. Leeg")) emptySection = true;
+            if (line == "\"1\"\r\n") once = true;
+            QVERIFY(!line.contains("INGEKORT"));
+        }
+        QCOMPARE(dataRows, 60001LL);
+        QVERIFY(lastRow && emptySection && once);
+        csv.close();
+
+        finished.clear();
+        exported.clear();
+        model.clear();
+        const auto largePath = directory.filePath("large-cell.csv");
+        QVERIFY(session.executeToFile("SELECT repeat('z',3*1024*1024) AS groot;", largePath, false));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 10000);
+        QVERIFY(exported.first().first().toBool());
+        QFile large(largePath);
+        QVERIFY(large.open(QIODevice::ReadOnly));
+        const auto largeBytes = large.readAll();
+        QVERIFY(largeBytes.contains(QByteArray(3*1024*1024, 'z')));
+        QVERIFY(!largeBytes.contains("INGEKORT"));
+        QVERIFY(ResultExporter::isTruncated(model.results()));
+
+        finished.clear();
+        exported.clear();
+        const auto valuesPath = directory.filePath("values.csv");
+        QVERIFY(session.executeToFile(QString::fromUtf8("SET bytea_output='escape'; SELECT 'caf\xc3\xa9,\"Hans\"' AS naam, E'<b>letterlijk</b>\\nregel' AS tekst, NULL::text AS leeg, decode('0001ff','hex') AS binair; RESET bytea_output;"), valuesPath, false));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 10000);
+        QVERIFY(exported.first().first().toBool());
+        QFile values(valuesPath);
+        QVERIFY(values.open(QIODevice::ReadOnly));
+        const auto valueBytes = values.readAll();
+        QVERIFY(valueBytes.contains(QString::fromUtf8("\"caf\xc3\xa9,\"\"Hans\"\"\"").toUtf8()));
+        QVERIFY(valueBytes.contains("\"<b>letterlijk</b>\nregel\""));
+        QVERIFY(valueBytes.contains("\"NULL\",\"\\x0001ff\""));
+
+        finished.clear();
+        exported.clear();
+        model.clear();
+        const auto xlsxPath = directory.filePath("full.xlsx");
+        QVERIFY(session.executeToFile("SELECT i::text AS id, '=1+1' AS literal, '001234567890123456789' AS exact FROM generate_series(1,25001) i;", xlsxPath, true, {333}));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 30000);
+        QVERIFY(exported.first().first().toBool());
+        QCOMPARE(exported.first().at(2).toLongLong(), 25001LL);
+        QVERIFY(ResultExporter::isTruncated(model.results()));
+        QProcess reader;
+        reader.start(QString::fromUtf8(PGADM_TEST_PYTHON), {QFINDTESTDATA("inspect-xlsx.py"), xlsxPath});
+        QVERIFY(reader.waitForFinished(10000));
+        QVERIFY2(reader.exitCode() == 0, reader.readAllStandardError().constData());
+        const auto workbook = QJsonDocument::fromJson(reader.readAllStandardOutput()).object();
+        const auto cells = workbook.value("cells").toObject();
+        QCOMPARE(cells.value("A25003").toString(), QString("25001"));
+        QCOMPARE(cells.value("B25003").toString(), QString("=1+1"));
+        QCOMPARE(cells.value("C25003").toString(), QString("001234567890123456789"));
+        QVERIFY(workbook.value("formulas").toArray().isEmpty());
+        QVERIFY(workbook.value("widths").toArray().first().toDouble() > 40);
+    }
+
+    void fullExportFailureAndCancel()
+    {
+        if (!qEnvironmentVariableIsSet("PGADM_TEST_PORT")) QSKIP("Requires disposable PostgreSQL 18.");
+        QTemporaryDir directory;
+        const auto path = directory.filePath("preserved.csv");
+        QFile previous(path);
+        QVERIFY(previous.open(QIODevice::WriteOnly));
+        previous.write("previous file");
+        previous.close();
+        PgSession session;
+        QSignalSpy connected(&session, &PgSession::connected);
+        session.open(profile());
+        QTRY_COMPARE_WITH_TIMEOUT(connected.count(), 1, 5000);
+        QSignalSpy finished(&session, &PgSession::executionFinished);
+        QSignalSpy exported(&session, &PgSession::exportFinished);
+        QVERIFY(session.execute("CREATE TEMP TABLE export_once (id int); INSERT INTO export_once VALUES(1);"));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 5000);
+        for (int scenario = 0; scenario < 4; ++scenario) {
+            finished.clear();
+            exported.clear();
+            const auto destination = scenario == 3 ? directory.filePath("missing/result.csv") : path;
+            const QStringList scripts{
+                "SELECT generate_series(1,1000); SELECT 1/0; INSERT INTO export_once VALUES(2);",
+                "SELECT repeat('x',32768); INSERT INTO export_once VALUES(2);",
+                "SELECT i, pg_sleep(0.001) FROM generate_series(1,20000) i; INSERT INTO export_once VALUES(2);",
+                "INSERT INTO export_once VALUES(2); SELECT 42;"};
+            QVERIFY(session.executeToFile(scripts[scenario], destination, scenario == 1));
+            if (scenario == 2) QTimer::singleShot(120, &session, &PgSession::cancel);
+            QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 10000);
+            QCOMPARE(exported.count(), 1);
+            QVERIFY(!exported.first().first().toBool());
+            QVERIFY(previous.open(QIODevice::ReadOnly));
+            QCOMPARE(previous.readAll(), QByteArray("previous file"));
+            previous.close();
+            finished.clear();
+            QSignalSpy results(&session, &PgSession::resultReady);
+            QVERIFY(session.execute("SELECT count(*) FROM export_once;"));
+            QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 5000);
+            QVERIFY(finished.first().first().toBool());
+            QString value;
+            for (const auto &signal : results)
+                for (const auto &row : qvariant_cast<QueryResult>(signal.first()).rows) value = row.first().text;
+            QCOMPARE(value, QString("1")); // No replay, no later statement after failure, reusable session.
+        }
+        QVERIFY(!QFileInfo::exists(directory.filePath("missing/result.csv")));
     }
 
     void errorAndRollback()

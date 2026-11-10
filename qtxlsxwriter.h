@@ -3,6 +3,7 @@
 #include <QStringList>
 #include <QTemporaryDir>
 #include <QVector>
+#include <atomic>
 
 struct lxw_workbook;
 struct lxw_worksheet;
@@ -21,7 +22,8 @@ public:
     Q_DISABLE_COPY(QtXlsxWriter)
     bool setColumnWidths(int columns, const QVector<int> &pixels);
     bool writeRow(const QStringList &values, bool heading = false);
-    QString save();
+    // Cancellation during ZIP finalisation/copy prevents publication; finalisation itself may take time.
+    QString save(const std::atomic_bool *cancelled = nullptr);
     QString errorString() const { return error; }
 private:
     bool check(int result);

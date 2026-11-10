@@ -1,5 +1,6 @@
 #include "pgsession.h"
 #include "sqlscript.h"
+#include "fullresultexport.h"
 
 #include <QElapsedTimer>
 #include <QHostAddress>
@@ -15,7 +16,8 @@ class PgConnection : public QObject
     Q_OBJECT
 public:
     // Create the worker-owned connection timeout; no database is opened by construction.
-    explicit PgConnection() : timeout(new QTimer(this))
+    explicit PgConnection(const std::shared_ptr<std::atomic_bool> &cancelled)
+        : timeout(new QTimer(this)), exportCancelled(cancelled)
     {
         timeout->setSingleShot(true);
         connect(timeout, &QTimer::timeout, this, [this] {
@@ -94,6 +96,18 @@ public:
     // Validate script splitting/string mode and initialise bounded sequential execution state.
     void execute(const QString &sql)
     {
+        executeScript(sql, {}, false, {});
+    }
+
+    // Keep the full-file path on the same worker/session as ordinary tab execution.
+    void executeToFile(const QString &sql, const QString &path, bool excel, const QVector<int> &widths)
+    {
+        executeScript(sql, path, excel, widths);
+    }
+
+    // Initialise file staging before dispatch; preview storage keeps its original limits.
+    void executeScript(const QString &sql, const QString &path, bool excel, const QVector<int> &widths)
+    {
         if (!established || running) return;
         QString error;
 // Scan statement boundaries outside quoted strings/bodies and nested comments, retaining result annotations.
@@ -109,6 +123,15 @@ public:
         keptBytes = 0;
         keptRows = 0;
         cancelled = false;
+        exportPath = path;
+        exportRows = 0;
+        exportReported = false;
+        exportClock.start();
+        if (!path.isEmpty()) {
+            fileExport = std::make_unique<FullResultExport>(path, excel, widths, statements.size() > 1);
+            if (!fileExport->errorString().isEmpty()) error = fileExport->errorString();
+            if (exportCancelled->load()) error = tr("Export geannuleerd voordat SQL werd uitgevoerd.");
+        }
         if (!error.isEmpty() || statements.isEmpty()) {
             QueryResult result;
             result.number = 1;
@@ -176,11 +199,15 @@ signals:
     void resultReady(const QueryResult &result);
     void notice(const QString &message);
     void executionFinished(bool success, const QString &transactionStatus);
+    void transactionChanged(bool active);
+    void exportProgress(qint64 rows);
+    void exportFinished(bool success, const QString &path, qint64 rows, const QString &message);
 
 private:
     // Stop DNS/timers/notifiers and free libpq handles, leaving worker state disconnected.
     void release()
     {
+        fileExport.reset();
         clearCancel();
         timeout->stop();
         if (lookup >= 0) QHostInfo::abortHostLookup(lookup);
@@ -316,6 +343,13 @@ private:
         running = false;
         waiting = false;
         clearCancel();
+        if (fileExport) {
+            emit exportProgress(exportRows);
+            const auto error = fileExport->finish(success && !cancelled, exportCancelled.get());
+            fileExport.reset();
+            success = success && !cancelled && error.isEmpty();
+            emit exportFinished(success, exportPath, exportRows, error);
+        }
         QString transaction = tr("Niet verbonden");
         if (connection) {
             switch (PQtransactionStatus(connection)) {
@@ -325,6 +359,8 @@ private:
             default: transaction = tr("Transactiestatus onbekend"); break;
             }
         }
+        const auto state = connection ? PQtransactionStatus(connection) : PQTRANS_UNKNOWN;
+        emit transactionChanged(state == PQTRANS_INTRANS || state == PQTRANS_INERROR);
         emit executionFinished(success, transaction);
         if (notifier) notifier->setEnabled(true);
     }
@@ -342,6 +378,7 @@ private:
         pending.title = statements[statementIndex].name.isEmpty() ? tr("Query %1").arg(pending.number) : statements[statementIndex].name;
         statementRows = 0;
         statementKeptRows = 0;
+        exportSectionStarted = false;
         queryFailed = false;
         complete = false;
         statementElapsed.start();
@@ -373,10 +410,39 @@ private:
         pending.rows.clear();
     }
 
+    // Latch/report the first file error and stop further SQL through the normal cancel protocol.
+    bool checkExport(bool success)
+    {
+        if (success) return true;
+        if (!exportReported) { emit notice(fileExport->errorString()); exportReported = true; }
+        if (complete) cancelled = true;
+        else cancel();
+        return false;
+    }
+
+    // Convert the current libpq row before any clipping; bytea keeps its canonical hex notation.
+    QStringList fullRow(PGresult *result, int row)
+    {
+        QStringList values;
+        for (int column = 0; column < PQnfields(result); ++column) {
+            if (PQgetisnull(result, row, column)) { values.append("NULL"); continue; }
+            const auto *value = PQgetvalue(result, row, column);
+            const int length = PQgetlength(result, row, column);
+            if (PQftype(result, column) == 17 && !(length >= 2 && value[0] == '\\' && value[1] == 'x')) {
+                size_t size = 0;
+                auto *bytes = PQunescapeBytea(reinterpret_cast<const unsigned char *>(value), &size);
+                values.append("\\x" + QString::fromLatin1(QByteArray(reinterpret_cast<const char *>(bytes), int(size)).toHex()));
+                PQfreemem(bytes);
+            } else values.append(QString::fromUtf8(value, length));
+        }
+        return values;
+    }
+
     // Drain libpq in short slices, bounding stored rows/bytes and explicitly marking clipping/errors.
     void readResults()
     {
         if (!running || waiting) return;
+        if (fileExport && exportCancelled->load() && !cancelled) cancel();
         if (complete) {
             if (queryFailed) finishScript(false);
             else if (const auto *setting = PQparameterStatus(connection, "standard_conforming_strings"); setting && QByteArray(setting) != "on") {
@@ -394,6 +460,8 @@ private:
                 complete = true;
                 pending.finished = true;
                 pending.elapsedMs = statementElapsed.elapsed();
+                if (fileExport && !cancelled) checkExport(fileExport->endResult(pending.status +
+                    tr(" | %1 ms (client, inclusief ophalen)").arg(pending.elapsedMs)));
                 if (pending.truncated) pending.status += tr(" — weergavelimiet bereikt; uitvoer ingekort");
                 pending.status += tr(" | %1 ms (client, inclusief ophalen)").arg(pending.elapsedMs);
                 publish();
@@ -407,9 +475,17 @@ private:
             }
             if (pending.columns.isEmpty())
                 for (int col = 0; col < PQnfields(result); ++col) pending.columns.append(QString::fromUtf8(PQfname(result, col)));
+            if (fileExport && !exportSectionStarted && !cancelled) {
+                exportSectionStarted = true;
+                checkExport(fileExport->beginResult(pending.number, pending.title, pending.columns));
+            }
             if (status == PGRES_SINGLE_TUPLE || status == PGRES_TUPLES_OK) {
                 for (int row = 0; row < PQntuples(result); ++row) {
                     ++statementRows;
+                    if (fileExport && !cancelled && !exportCancelled->load() && checkExport(fileExport->writeRow(fullRow(result, row)))) {
+                        ++exportRows;
+                        if (exportClock.elapsed() >= 250) { emit exportProgress(exportRows); exportClock.restart(); }
+                    }
                     if (statementKeptRows >= 20000 || keptRows >= 50000 || keptBytes + 128LL * PQnfields(result) + 32 >= 32 * 1024 * 1024) {
                         pending.truncated = true;
                         continue;
@@ -490,14 +566,21 @@ private:
     bool complete = false;
     bool queryFailed = false;
     bool cancelled = false;
+    std::shared_ptr<std::atomic_bool> exportCancelled;
+    std::unique_ptr<FullResultExport> fileExport;
+    QString exportPath;
+    qint64 exportRows = 0;
+    QElapsedTimer exportClock;
+    bool exportSectionStarted = false;
+    bool exportReported = false;
     qint64 keptBytes = 0;
     int keptRows = 0;
-    int statementRows = 0;
+    qint64 statementRows = 0;
     int statementKeptRows = 0;
 };
 
 // Own a worker thread and forward commands/results; acknowledge each delivered batch to bound queued work.
-PgSession::PgSession(QObject *parent) : QObject(parent), worker(new PgConnection)
+PgSession::PgSession(QObject *parent) : QObject(parent), worker(new PgConnection(exportCancelled))
 {
     qRegisterMetaType<QueryResult>();
     worker->moveToThread(&thread);
@@ -505,6 +588,7 @@ PgSession::PgSession(QObject *parent) : QObject(parent), worker(new PgConnection
     connect(this, &PgSession::openRequested, worker, &PgConnection::open);
     connect(this, &PgSession::closeRequested, worker, &PgConnection::close);
     connect(this, &PgSession::executeRequested, worker, &PgConnection::execute);
+    connect(this, &PgSession::exportRequested, worker, &PgConnection::executeToFile);
     connect(this, &PgSession::roleChangeRequested, worker, &PgConnection::changeRole);
     connect(this, &PgSession::cancelRequested, worker, &PgConnection::cancel);
     connect(this, &PgSession::acknowledged, worker, &PgConnection::acknowledge);
@@ -513,6 +597,9 @@ PgSession::PgSession(QObject *parent) : QObject(parent), worker(new PgConnection
         emit acknowledged();
     });
     connect(worker, &PgConnection::notice, this, &PgSession::notice);
+    connect(worker, &PgConnection::exportProgress, this, &PgSession::exportProgress);
+    connect(worker, &PgConnection::exportFinished, this, &PgSession::exportFinished);
+    connect(worker, &PgConnection::transactionChanged, this, [this](bool active) { transactionActive = active; });
     connect(worker, &PgConnection::executionFinished, this, [this](bool success, const QString &transaction) {
         busy = false;
         emit executionFinished(success, transaction);
@@ -528,12 +615,14 @@ PgSession::PgSession(QObject *parent) : QObject(parent), worker(new PgConnection
     connect(worker, &PgConnection::failed, this, [this](const QString &message, bool needsPassword) {
         if (connectionState == Disconnecting) return;
         connectionState = Disconnected;
+        transactionActive = false;
         serverInformation.clear();
         emit stateChanged();
         emit failed(message, needsPassword);
     });
     connect(worker, &PgConnection::disconnected, this, [this] {
         connectionState = Disconnected;
+        transactionActive = false;
         serverInformation.clear();
         emit stateChanged();
         emit disconnected();
@@ -544,6 +633,7 @@ PgSession::PgSession(QObject *parent) : QObject(parent), worker(new PgConnection
 // Stop the worker event loop and wait until its PGconn and notifier resources have been released.
 PgSession::~PgSession()
 {
+    exportCancelled->store(true);
     thread.quit();
     thread.wait();
 }
@@ -560,6 +650,7 @@ void PgSession::open(const QVariantMap &profile, const QString &password)
 // Mark the session Disconnecting before asking the worker to release the connection.
 void PgSession::close()
 {
+    exportCancelled->store(true);
     if (connectionState == Disconnected || connectionState == Disconnecting) return;
     connectionState = Disconnecting;
     emit stateChanged();
@@ -571,8 +662,20 @@ bool PgSession::execute(const QString &sql)
 {
     if (connectionState != Connected || busy) return false;
     busy = true;
+    exportCancelled->store(false);
     emit stateChanged();
     emit executeRequested(sql);
+    return true;
+}
+
+// Capture explicit export arguments without replaying an already executed result.
+bool PgSession::executeToFile(const QString &sql, const QString &path, bool excel, const QVector<int> &widths)
+{
+    if (connectionState != Connected || busy || path.isEmpty()) return false;
+    exportCancelled->store(false);
+    busy = true;
+    emit stateChanged();
+    emit exportRequested(sql, path, excel, widths);
     return true;
 }
 
@@ -590,7 +693,7 @@ bool PgSession::executeRoleChange(const QString &sql, const QString &role, const
 // Forward cancellation only while a script is active; the worker handles the libpq cancel protocol.
 void PgSession::cancel()
 {
-    if (busy) emit cancelRequested();
+    if (busy) { exportCancelled->store(true); emit cancelRequested(); }
 }
 
 #include "pgsession.moc"

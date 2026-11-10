@@ -1,5 +1,6 @@
 #include "databasejob.h"
 #include "pgtools.h"
+#include "pgsession.h"
 #include <QFile>
 #include <QFileInfo>
 #include <QFutureWatcher>
@@ -21,6 +22,7 @@ DatabaseJob::~DatabaseJob()
         process->waitForFinished(1000);
     }
     copyFuture.waitForFinished();
+    delete maintenance;
     delete temporary;
 }
 
@@ -129,6 +131,62 @@ void DatabaseJob::drop(const QVariantMap &profile, const QString &password, cons
         "--maintenance-db=" + PgTools::databaseArgument(profile.value("database", "postgres").toString()), "--", database});
 }
 
+// Quote identifiers independently; no server-provided name is treated as an SQL fragment.
+QString DatabaseJob::maintenanceSql(Operation operation, const QString &database, const QString &schema,
+                                    const QString &relation, bool vacuumAnalyze, bool reindexConcurrently, QString *error)
+{
+    *error = nameError(database);
+    if (!error->isEmpty()) return {};
+    if (operation != Vacuum && operation != Analyze && operation != Reindex) { *error = tr("Kies een onderhoudsactie."); return {}; }
+    if (schema.isEmpty() != relation.isEmpty() || (!schema.isEmpty() &&
+        (!nameError(schema).isEmpty() || !nameError(relation).isEmpty()))) {
+        *error = tr("Ongeldig schema of ongeldige tabelnaam."); return {};
+    }
+    auto identifier = [](QString name) { name.replace('"', "\"\""); return '"' + name + '"'; };
+    const auto target = relation.isEmpty() ? QString() : identifier(schema) + '.' + identifier(relation);
+    if (operation == Vacuum) return "VACUUM (VERBOSE" + QString(vacuumAnalyze ? ", ANALYZE" : "") + ')' +
+        (target.isEmpty() ? QString() : ' ' + target) + ';';
+    if (operation == Analyze) return "ANALYZE (VERBOSE)" + (target.isEmpty() ? QString() : ' ' + target) + ';';
+    return "REINDEX (VERBOSE) " + QString(target.isEmpty() ? "DATABASE " : "TABLE ") +
+        (reindexConcurrently ? "CONCURRENTLY " : "") + (target.isEmpty() ? identifier(database) : target) + ';';
+}
+
+// Use the existing asynchronous libpq worker outside every query-tab transaction.
+void DatabaseJob::maintain(Operation requested, const QVariantMap &profile, const QString &password,
+                           const QString &database, const QString &schema, const QString &relation,
+                           bool vacuumAnalyze, bool reindexConcurrently)
+{
+    if (running) return;
+    running = true;
+    operation = requested;
+    cancelled = std::make_shared<std::atomic_bool>(false);
+    QString error;
+    const auto sql = maintenanceSql(requested, database, schema, relation, vacuumAnalyze, reindexConcurrently, &error);
+    if (!error.isEmpty()) { complete(false, error); return; }
+    auto runtime = profile;
+    runtime["database"] = database;
+    maintenance = new PgSession(this);
+    connect(maintenance, &PgSession::connected, this, [this, sql] {
+        if (!cancelled->load()) maintenance->execute(sql);
+        else maintenance->close();
+    });
+    connect(maintenance, &PgSession::notice, this, [this](const QString &message) { emit output(message + '\n'); });
+    connect(maintenance, &PgSession::resultReady, this, [this](const QueryResult &result) {
+        if (!result.status.isEmpty()) emit output(result.status + '\n');
+    });
+    connect(maintenance, &PgSession::executionFinished, this, [this](bool success, const QString &) {
+        const bool stopped = cancelled->load();
+        complete(success && !stopped, stopped ? tr("Onderhoud geannuleerd. Reeds afgeronde onderdelen blijven van kracht; zie de loguitvoer.") :
+            success ? tr("Onderhoud voltooid; zie ook eventuele waarschuwingen in de loguitvoer.") : tr("Onderhoud mislukt. Zie de loguitvoer."));
+    });
+    connect(maintenance, &PgSession::failed, this, [this](const QString &message, bool) { complete(false, message); });
+    connect(maintenance, &PgSession::disconnected, this, [this] {
+        if (running) complete(false, tr("Onderhoudsverbinding gesloten."));
+    });
+    emit output(sql + '\n');
+    maintenance->open(runtime, password);
+}
+
 // Run one tool without a shell; release the process environment as soon as the tool finishes.
 void DatabaseJob::launch(const QString &tool, const QVariantMap &profile, const QString &password, const QStringList &arguments)
 {
@@ -200,6 +258,12 @@ void DatabaseJob::commitBackup()
 // Clean resources before reporting completion, including failures before a process was started.
 void DatabaseJob::complete(bool success, const QString &message)
 {
+    if (maintenance) {
+        maintenance->disconnect(this);
+        maintenance->close();
+        maintenance->deleteLater();
+        maintenance = nullptr;
+    }
     if (process) {
         process->disconnect(this);
         process->deleteLater();
@@ -217,5 +281,9 @@ void DatabaseJob::cancel()
 {
     if (!running) return;
     cancelled->store(true);
+    if (maintenance) {
+        if (maintenance->isBusy()) maintenance->cancel();
+        else maintenance->close();
+    }
     if (process) process->kill();
 }

@@ -2,6 +2,7 @@
 #define QUERYTAB_H
 
 #include <QWidget>
+#include <QElapsedTimer>
 
 class QPlainTextEdit;
 class QTabWidget;
@@ -12,6 +13,8 @@ class QTableView;
 class CellViewer;
 class ResultModel;
 class QPushButton;
+class QToolButton;
+class QTimer;
 struct QueryResult;
 
 // goal: Own one editor, result model and detail/output views for a selected connection.
@@ -42,6 +45,10 @@ public:
     void appendMessage(const QString &message);
     // Restore execution controls and show the session's final transaction status.
     void finishExecution(bool success, const QString &transaction);
+    // Explicit execution-to-file action, distinct from exporting the retained preview.
+    void setFullExportAvailable(bool enabled);
+    void startFullExport(const QString &destination);
+    void updateFullExport(qint64 rows);
     bool isRunning() const { return running; }
     // Return the selected SQL, normalising paragraph separators, or the whole editor.
     QString sqlToExecute() const;
@@ -54,6 +61,7 @@ public:
 signals:
     void allResultsChanged(bool enabled);
     void connectionChanged();
+    void fullExportRequested(bool excel);
     void columnWidthsChanged(const QVariantList &widths);
 
 private:
@@ -80,6 +88,11 @@ private:
     QPushButton *csvButton;
     QPushButton *xlsxButton;
     bool exporting = false;
+    QToolButton *fullExportButton;
+    QTimer *fullExportTimer;
+    QElapsedTimer fullExportElapsed;
+    qint64 fullExportRows = 0;
+    bool canExecute = false;
 };
 
 #endif
