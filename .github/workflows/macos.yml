@@ -41,7 +41,11 @@ jobs:
         run: |
           brew install ninja libpq@18 dylibbundler
           python -m pip install 'aqtinstall @ git+https://github.com/miurahr/aqtinstall.git@5a49f2b391ae8ee1d3c0dd87f8b33c1d49a4deb7'
-          python -m aqt install-qt mac desktop 6.11.1 clang_64 --archives qtbase qtsvg qttools qttranslations --outputdir "$GITHUB_WORKSPACE/build/Qt"
+          # The macOS lrelease tool links QtQml, supplied by qtdeclarative.
+          python -m aqt install-qt mac desktop 6.11.1 clang_64 --archives qtbase qtdeclarative qtsvg qttools qttranslations --outputdir "$GITHUB_WORKSPACE/build/Qt"
+      - name: Check translation compiler
+        run: |
+          "$PGADM_QT_ROOT/bin/lrelease" -version
       - name: Build, deploy and check DMG
         run: bash tools/build-macos.sh
       - uses: actions/upload-artifact@v6

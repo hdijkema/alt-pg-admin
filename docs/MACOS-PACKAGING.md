@@ -11,6 +11,10 @@ The runner installs pinned Qt 6.11.1 with the same aqt revision as Windows.
 Homebrew supplies Ninja, PostgreSQL 18 client tools/SDK (`libpq@18`) and
 dylibbundler. These are build-machine tools; end users need no Homebrew.
 The scripts do not install or start a PostgreSQL server.
+The Qt SDK includes qtdeclarative because the macOS lrelease binary links QtQml.
+The workflow runs lrelease before compiling application sources, so missing
+translation-tool frameworks fail early. This does not add QML to the widget
+application's linked modules or deliberately deploy QtQml in the DMG.
 
 `tools/build-macos.sh` builds Release, checks the translation catalogs and window
 UI without database/keychain integration tests, then calls `tools/package-macos.py`.
