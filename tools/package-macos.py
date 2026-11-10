@@ -30,6 +30,17 @@ def check_dependencies(file: Path, load_commands: str) -> None:
             raise ValueError(f'External dependency left in {file}: {dependency}')
 
 
+def move_license_notices(app: Path) -> None:
+    """Keep plain-text notices in Resources, outside the bundle's code directory."""
+    binaries = app / 'Contents/MacOS'
+    resources = app / 'Contents/Resources'
+    for notice in binaries.iterdir():
+        if notice.is_file() and notice.suffix.lower() == '.txt' and any(
+                kind in notice.name.lower() for kind in ('license', 'copying')):
+            resources.mkdir(exist_ok=True)
+            shutil.move(notice, resources / notice.name)
+
+
 def package(build: Path, qt: Path, pg: Path, requested_version: str) -> None:
     """Bundle client dependencies and Qt, ad-hoc sign, mount/test and emit an arm64 DMG."""
     if sys.platform != 'darwin' or os.uname().machine != 'arm64':
@@ -42,6 +53,7 @@ def package(build: Path, qt: Path, pg: Path, requested_version: str) -> None:
     image_root.mkdir()
     app = image_root / 'alt-pg-admin.app'
     shutil.copytree(build / 'pgadmin_qt.app', app, symlinks=True)
+    move_license_notices(app)
     with (app / 'Contents/Info.plist').open('rb') as stream:
         info = plistlib.load(stream)
     version = info['CFBundleShortVersionString']

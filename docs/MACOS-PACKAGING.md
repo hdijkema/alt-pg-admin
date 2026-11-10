@@ -22,8 +22,9 @@ The latter copies the bundle as `alt-pg-admin.app`, retaining its version, deskt
 identity and ICNS icon. Five PostgreSQL client tools go into Contents/MacOS,
 where PgTools already looks. dylibbundler copies their library dependencies to
 Contents/Frameworks and rewrites references; the app uses that same bundled libpq.
-macdeployqt then deploys Qt frameworks/plugins. Application and available Homebrew
-dependency notices accompany the bundle.
+macdeployqt then deploys Qt frameworks/plugins. Application notices are placed in
+Contents/Resources, and available Homebrew dependency notices are collected in
+Contents/Resources/licenses.
 Qt's Dutch/German base catalogs are also bundled for standard dialog/button text;
 application translations remain embedded in the executable.
 

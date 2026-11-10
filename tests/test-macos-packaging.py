@@ -2,13 +2,36 @@
 """Check Mach-O dependency auditing without requiring macOS commands or signing."""
 from pathlib import Path
 import runpy
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-check_dependencies = runpy.run_path(str(ROOT / 'tools/package-macos.py'))['check_dependencies']
+packaging = runpy.run_path(str(ROOT / 'tools/package-macos.py'))
+check_dependencies = packaging['check_dependencies']
+move_license_notices = packaging['move_license_notices']
 
 
 class MacPackagingTest(unittest.TestCase):
+    def test_license_notices_are_moved_out_of_macos_directory(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = Path(temporary_directory) / 'alt-pg-admin.app'
+            binaries = app / 'Contents/MacOS'
+            resources = app / 'Contents/Resources'
+            binaries.mkdir(parents=True)
+            (binaries / 'Lucide-LICENSE.txt').write_text('license')
+            (binaries / 'QtKeychain-COPYING.txt').write_text('copying')
+            (binaries / 'pgadmin_qt').write_text('executable')
+            (binaries / 'readme.txt').write_text('other text')
+
+            move_license_notices(app)
+
+            self.assertEqual((resources / 'Lucide-LICENSE.txt').read_text(), 'license')
+            self.assertEqual((resources / 'QtKeychain-COPYING.txt').read_text(), 'copying')
+            self.assertTrue((binaries / 'pgadmin_qt').is_file())
+            self.assertTrue((binaries / 'readme.txt').is_file())
+            self.assertFalse((binaries / 'Lucide-LICENSE.txt').exists())
+            self.assertFalse((binaries / 'QtKeychain-COPYING.txt').exists())
+
     def test_plugin_install_name_is_not_an_import(self):
         # macdeployqt can set an absolute ID inside the staged bundle (the reported CI failure).
         check_dependencies(Path('libqcocoa.dylib'), '''Load command 0
