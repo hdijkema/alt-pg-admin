@@ -70,7 +70,7 @@ public:
         const char *keys[] = {"host", "hostaddr", "port", "dbname", "user", "password", "sslmode",
                               "application_name", "client_encoding", nullptr};
         const char *values[] = {host.constData(), hostaddr.constData(), port.constData(), database.constData(), user.constData(),
-                                secret.constData(), ssl.constData(), "PgAdmQt", "UTF8", nullptr};
+                                password.isEmpty() ? nullptr : secret.constData(), ssl.constData(), "PgAdmQt", "UTF8", nullptr};
         // expand_dbname=0: a database name containing '=' is never a connection string.
         connection = PQconnectStartParams(keys, values, 0);
         secret.fill('\0');
