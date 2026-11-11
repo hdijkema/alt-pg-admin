@@ -41,6 +41,14 @@ def move_license_notices(app: Path) -> None:
             shutil.move(notice, resources / notice.name)
 
 
+def bundle_qt_translations(app: Path, qt: Path) -> None:
+    """Place Qt translations in Resources, outside the signed executable directory."""
+    translations = app / 'Contents/Resources/translations'
+    translations.mkdir(parents=True, exist_ok=True)
+    for language in ['nl', 'de']:
+        shutil.copy2(qt / f'translations/qtbase_{language}.qm', translations / f'qt_{language}.qm')
+
+
 def package(build: Path, qt: Path, pg: Path, requested_version: str) -> None:
     """Bundle client dependencies and Qt, ad-hoc sign, mount/test and emit an arm64 DMG."""
     if sys.platform != 'darwin' or os.uname().machine != 'arm64':
@@ -85,10 +93,7 @@ def package(build: Path, qt: Path, pg: Path, requested_version: str) -> None:
     deployment = [qt / 'bin/macdeployqt', app, '-always-overwrite', '-no-codesign', '-verbose=2']
     deployment.extend('-executable=' + str(binaries / tool) for tool in tools)
     run(deployment)
-    translations = binaries / 'translations'
-    translations.mkdir(exist_ok=True)
-    for language in ['nl', 'de']:
-        shutil.copy2(qt / f'translations/qtbase_{language}.qm', translations / f'qt_{language}.qm')
+    bundle_qt_translations(app, qt)
     licenses = app / 'Contents/Resources/licenses'
     licenses.mkdir(parents=True, exist_ok=True)
     for name in ['LICENSE', 'README.md']:
