@@ -1,4 +1,4 @@
-# Resolve a release only for an explicit vX.Y.Z push or manual version input.
+# Resolve a release for an explicit X.Y.Z/vX.Y.Z tag push or manual version input.
 # Return build metadata without writing tags, contacting GitHub or publishing files.
 param(
     [string]$EventName = '',
@@ -8,16 +8,23 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $version = ''
-if ($EventName -eq 'push' -and $RefType -eq 'tag' -and $RefName.StartsWith('v')) {
-    $version = $RefName.Substring(1)
-    if (!$version) { throw 'A release tag must have the form vX.Y.Z.' }
+$tag = ''
+if ($EventName -eq 'push' -and $RefType -eq 'tag') {
+    $tag = $RefName
+    $version = $tag
+    if ($version.StartsWith('v')) { $version = $version.Substring(1) }
+    if (!$version) { throw 'A release tag must have the form X.Y.Z or vX.Y.Z.' }
 }
 if ($EventName -eq 'workflow_dispatch' -and $RequestedVersion) {
     $version = $RequestedVersion
     if ($version.StartsWith('v')) { $version = $version.Substring(1) }
     if (!$version) { throw 'Enter a version with the form X.Y.Z.' }
-    if ($RefType -eq 'tag' -and $RefName -ne "v$version") {
-        throw 'The requested version must match the selected tag.'
+    $tag = "v$version"
+    if ($RefType -eq 'tag') {
+        if ($RefName -ne $version -and $RefName -ne "v$version") {
+            throw 'The requested version must match the selected tag.'
+        }
+        $tag = $RefName
     }
 }
 if ($version -and $version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
@@ -26,6 +33,6 @@ if ($version -and $version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9
 [pscustomobject]@{
     Version = $version
     Publish = [bool]$version
-    Tag = if ($version) { "v$version" } else { '' }
+    Tag = $tag
     Archive = if ($version) { "alt-pg-admin-$version-windows-x64.zip" } else { 'alt-pg-admin-windows-x64.zip' }
 }

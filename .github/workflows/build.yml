@@ -43,6 +43,9 @@ jobs:
           "publish=$($release.Publish.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
       - name: Check release packaging helpers
         run: python3 tests/test-release-assets.py
+      - name: Check release version resolver
+        shell: pwsh
+        run: ./tests/test-release-version.ps1
 
   windows:
     needs: version

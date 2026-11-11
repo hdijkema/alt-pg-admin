@@ -341,7 +341,12 @@ package declare it explicitly. Debian 12 keeps the plugins in libqt6svg6. Debian
 startup checks use UTF-8 and diagnose an icon-rendering failure on stderr.
 
 Release metadata is resolved by `tools/release-version.ps1` for numeric tags or
-explicit manual version input. CMake's `PGADM_RELEASE_VERSION` overrides the
+explicit manual version input. Both `X.Y.Z` and `vX.Y.Z` tag spellings are accepted
+and preserved; branch-based manual releases use `vX.Y.Z`. After all eight packages
+and the tag commit are verified, `publish-release.sh` creates a missing release or
+uploads only missing asset names to an existing release, retaining its notes and
+existing downloads. Resolver and upload behaviour use isolated local fixtures.
+CMake's `PGADM_RELEASE_VERSION` overrides the
 development version and supplies `PGADM_APP_VERSION` to `src/app/main.cpp`; About reads the
 Qt application version. The packaging smoke report verifies a requested version
 before creating its versioned ZIP. A separate write-enabled Actions job creates

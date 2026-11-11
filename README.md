@@ -518,10 +518,11 @@ integration test targets disabled, then a downloadable portable ZIP artifact.
 Packaging checks startup with isolated settings. The shared build and ZIP packaging
 scripts have been checked locally; workflow updates still need a GitHub run.
 See [GitHub Actions builds](docs/CI.md) for commands, artifacts and limits.
-Pushing a tag such as `v0.2.0`, or supplying a version in a manual workflow run,
+Pushing a tag such as `0.2.0` or `v0.2.0`, or supplying a version in a manual workflow run,
 publishes a GitHub Release with the versioned Windows ZIP and Inno Setup installer, Debian 12/13 packages
 and the Flatpak and Apple Silicon macOS DMG after all platform builds and package checks succeed. The version also appears in the application. Branch/PR builds only
-produce Actions artifacts. Publication still needs validation on GitHub.
+produce Actions artifacts. Existing releases receive missing assets without replacing
+their notes or existing downloads. Publication still needs validation on GitHub.
 The Windows installer is configured and has local install/reinstall/uninstall
 validation. The macOS Apple Silicon job and DMG are configured for macOS 15 or newer
 and await their first native hosted validation; Intel is not configured.

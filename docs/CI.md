@@ -44,14 +44,15 @@ are excluded. Ordinary branch/PR builds produce Actions artifacts only.
 
 There are two explicit ways to publish a release after all platform builds succeed:
 
-- Push a numeric tag such as `v0.2.0`.
+- Push a numeric tag such as `0.2.0` or `v0.2.0`. The exact tag spelling is preserved.
 - Open Actions > Release build > Run workflow, select the source branch
   and enter `0.2.0` in the version field.
   An optional `v` prefix is accepted. Leaving the field empty builds only.
 
 Use `major.minor.patch` without leading zeroes or prerelease suffixes. Invalid
 versions fail before dependency downloads. A manual run on a tag must request
-that same tag's version. PRs and ordinary branch pushes never publish a release.
+that same tag's version (with or without `v`); it publishes to the selected tag.
+A manual branch run creates a `v`-prefixed tag. PRs and ordinary branch pushes never publish a release.
 
 The version becomes `PGADM_RELEASE_VERSION` in CMake, the application/About version,
 and each platform package, including the embedded Flatpak application version.
@@ -62,8 +63,9 @@ Without a release override, the current development version is 0.1.0.
 The publishing job waits for Windows, Debian 12, Debian 13, Flatpak and macOS to succeed.
 It downloads only the package artifacts from that same workflow run, checks that
 all eight expected versioned files are present and nonempty, and checks an existing
-tag against the built commit. `tools/publish-release.sh` then uses `gh release create`
-with generated notes and all eight assets:
+tag against the built commit. `tools/publish-release.sh` creates a missing release
+with generated notes, or uploads missing assets to an existing release. All eight
+packages must be available from the same workflow run:
 
 - `alt-pg-admin-0.2.0-windows-x64.zip`
 - `alt-pg-admin-0.2.0-windows-x64-setup.exe`
@@ -75,7 +77,13 @@ with generated notes and all eight assets:
 - `alt-pg-admin-0.2.0-macos-arm64.dmg`
 
 Reports are retained as Actions artifacts and are not attached to releases. A manual release creates a missing tag at that commit.
-Existing releases are not overwritten; use a new version for a new release.
+Existing release titles, notes and assets are preserved. This also supports a
+release created through the GitHub UI before packaging finishes. Repeating the
+workflow adds only missing asset names; a complete release needs no upload.
+The main workflow must be present in the tagged commit. To use workflow fixes,
+push those fixes first and tag a new version; rerunning an older run uses its
+original workflow. Do not rename unversioned development artifacts to repair an
+old release: their embedded application version does not match the release.
 All action runtimes, including download-artifact v7, use Node.js 24.
 
 The release workflow has been checked locally with actionlint and the resolver's

@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 #########################################################################################################################
 
 set(PGADM_RELEASE_VERSION "" CACHE STRING "Release version (major.minor.patch); empty uses the development version")
-set(PGADM_VERSION "0.3.2")
+set(PGADM_VERSION "0.3.3")
 if(NOT PGADM_RELEASE_VERSION STREQUAL "")
     if(NOT PGADM_RELEASE_VERSION MATCHES "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")
         message(FATAL_ERROR "PGADM_RELEASE_VERSION must have the form major.minor.patch")

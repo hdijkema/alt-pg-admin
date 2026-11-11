@@ -33,7 +33,10 @@ class ReleaseAssetsTest(unittest.TestCase):
         binaries.mkdir()
         fake_gh = binaries / "gh"
         fake_gh.write_text("#!/usr/bin/env python3\nimport json,os,sys\n"
-                           "open(os.environ['RELEASE_TEST_LOG'],'w').write(json.dumps(sys.argv[1:]))\n")
+                           "with open(os.environ['RELEASE_TEST_LOG'],'a') as log: log.write(json.dumps(sys.argv[1:])+'\\n')\n"
+                           "if sys.argv[1:3] == ['release','view']:\n"
+                           " if 'RELEASE_TEST_ASSETS' not in os.environ: sys.exit(1)\n"
+                           " sys.stdout.buffer.write(os.environ['RELEASE_TEST_ASSETS'].encode('utf-8'))\n")
         fake_gh.chmod(0o755)
         self.log = self.directory / "gh.json"
         self.environment.update(PATH=str(binaries) + os.pathsep + os.environ["PATH"],
@@ -51,7 +54,7 @@ class ReleaseAssetsTest(unittest.TestCase):
         self.git("tag", "v0.2.0")
         result = self.publish()
         self.assertEqual(result.returncode, 0, result.stderr)
-        arguments = json.loads(self.log.read_text())
+        arguments = json.loads(self.log.read_text().splitlines()[-1])
         self.assertEqual(arguments[:3], ["release", "create", "v0.2.0"])
         self.assertEqual({Path(p).resolve() for p in arguments[3:11]}, {p.resolve() for p in self.packages.iterdir()})
         self.assertEqual(arguments[arguments.index("--target") + 1], self.git("rev-parse", "HEAD"))
@@ -66,6 +69,42 @@ class ReleaseAssetsTest(unittest.TestCase):
                     asset.write_bytes(b"")
                 self.assertNotEqual(self.publish().returncode, 0)
                 self.assertFalse(self.log.exists())
+
+    def test_tag_without_v_prefix_is_preserved(self):
+        self.environment['RELEASE_TAG'] = '0.2.0'
+        self.git('tag', '0.2.0')
+        result = self.publish()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        arguments = json.loads(self.log.read_text().splitlines()[-1])
+        self.assertEqual(arguments[:3], ['release', 'create', '0.2.0'])
+
+    def test_existing_empty_release_receives_all_packages(self):
+        self.environment['RELEASE_TEST_ASSETS'] = ''
+        self.git('tag', 'v0.2.0')
+        result = self.publish()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[-1][:3], ['release', 'upload', 'v0.2.0'])
+        self.assertEqual({Path(p).resolve() for p in calls[-1][3:]}, {p.resolve() for p in self.packages.iterdir()})
+
+    def test_existing_assets_are_preserved(self):
+        existing = 'alt-pg-admin-0.2.0-macos-arm64.dmg'
+        self.environment['RELEASE_TEST_ASSETS'] = existing
+        result = self.publish()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        upload = json.loads(self.log.read_text().splitlines()[-1])
+        self.assertEqual(upload[:3], ['release', 'upload', 'v0.2.0'])
+        self.assertEqual({Path(p).name for p in upload[3:]}, {p.name for p in self.packages.iterdir()} - {existing})
+        self.assertNotIn('--clobber', upload)
+
+    def test_complete_existing_release_needs_no_upload(self):
+        self.environment['RELEASE_TEST_ASSETS'] = '\n'.join(p.name for p in self.packages.iterdir())
+        result = self.publish()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][:3], ['release', 'view', 'v0.2.0'])
 
     def test_missing_windows_installer_blocks_publication(self):
         (self.packages / 'alt-pg-admin-0.2.0-windows-x64-setup.exe').unlink()

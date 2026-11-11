@@ -4,7 +4,7 @@ set -euo pipefail
 package_dir=${1:-release}
 version=${RELEASE_VERSION:?RELEASE_VERSION is required}
 release_tag=${RELEASE_TAG:?RELEASE_TAG is required}
-if [[ ! $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ || $release_tag != "v$version" ]]; then
+if [[ ! $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ || ( $release_tag != "v$version" && $release_tag != "$version" ) ]]; then
     echo 'The release tag must match the numeric package version.' >&2
     exit 1
 fi
@@ -31,5 +31,22 @@ if git show-ref --verify --quiet "refs/tags/$release_tag"; then
         exit 1
     fi
 fi
-gh release create "$release_tag" "${assets[@]}" \
-    --target "$(git rev-parse HEAD)" --title "alt-pg-admin $release_tag" --generate-notes
+if existing_assets=$(gh release view "$release_tag" --json assets --jq '.assets[].name'); then
+    missing_assets=()
+    for asset in "${assets[@]}"; do
+        name=${asset##*/}
+        found=false
+        while IFS= read -r existing; do
+            if [[ $existing == "$name" ]]; then found=true; break; fi
+        done <<< "$existing_assets"
+        if [[ $found == false ]]; then missing_assets+=("$asset"); fi
+    done
+    if (( ${#missing_assets[@]} )); then
+        gh release upload "$release_tag" "${missing_assets[@]}"
+    else
+        echo "All package assets are already attached to $release_tag."
+    fi
+else
+    gh release create "$release_tag" "${assets[@]}" \
+        --target "$(git rev-parse HEAD)" --title "alt-pg-admin $release_tag" --generate-notes
+fi

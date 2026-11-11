@@ -11,13 +11,21 @@ if (!$release.Publish -or $release.Archive -ne 'alt-pg-admin-0.2.0-windows-x64.z
 }
 $release = & $resolve -EventName workflow_dispatch -RequestedVersion 'v0.2.0'
 if ($release.Version -ne '0.2.0') { throw 'The optional v prefix was not normalised.' }
+foreach ($tag in @('0.3.2', 'v0.3.2')) {
+    $release = & $resolve -EventName push -RefType tag -RefName $tag
+    if (!$release.Publish -or $release.Version -ne '0.3.2' -or $release.Tag -ne $tag) {
+        throw "Tag spelling was not preserved: $tag"
+    }
+    $release = & $resolve -EventName workflow_dispatch -RefType tag -RefName $tag -RequestedVersion '0.3.2'
+    if (!$release.Publish -or $release.Tag -ne $tag) { throw 'Manual tag resolution failed.' }
+}
 foreach ($event in @('pull_request', 'push')) {
     $release = & $resolve -EventName $event -RefType branch -RefName main -RequestedVersion '1.2.3'
     if ($release.Publish -or $release.Version) { throw 'A branch build must not publish.' }
 }
 $release = & $resolve -EventName workflow_dispatch
 if ($release.Publish) { throw 'A manual build without a version must not publish.' }
-foreach ($bad in @('v01.2.3', 'v1.2', 'v1.2.3-rc1', 'v', 'v1.2.3;echo unsafe')) {
+foreach ($bad in @('01.2.3', 'v01.2.3', '1.2', 'v1.2', '1.2.3-rc1', 'v1.2.3-rc1', 'v', 'v1.2.3;echo unsafe')) {
     $rejected = $false
     try { $null = & $resolve -EventName push -RefType tag -RefName $bad }
     catch { $rejected = $true }
