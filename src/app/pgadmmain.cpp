@@ -28,6 +28,7 @@
 #include <QFormLayout>
 #include <QLabel>
 #include <QInputDialog>
+#include <QTabBar>
 #include <QIcon>
 #include <QLineEdit>
 #include <QMenuBar>
@@ -79,6 +80,15 @@ PgAdmMain::PgAdmMain(QWidget *parent, const QString &settingsPath)
     queries->setMovable(true);
     setCentralWidget(queries);
     connect(queries, &QTabWidget::tabCloseRequested, this, &PgAdmMain::closeQuery);
+    connect(queries, &QTabWidget::tabBarDoubleClicked, this, &PgAdmMain::renameQueryTab);
+    queries->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(queries->tabBar(), &QWidget::customContextMenuRequested, this, [this](const QPoint &point) {
+        const int index = queries->tabBar()->tabAt(point);
+        if (index < 0) return;
+        QMenu menu(this);
+        menu.addAction(tr("Tabnaam wijzigen..."), this, [this, index] { renameQueryTab(index); });
+        menu.exec(queries->tabBar()->mapToGlobal(point));
+    });
     connectAction = new QAction(tr("Verbinden"), this);
     connectAction->setObjectName("connectProfileAction");
     disconnectAction = new QAction(tr("Verbinding verbreken / poging annuleren"), this);
@@ -338,16 +348,18 @@ PgAdmMain::PgAdmMain(QWidget *parent, const QString &settingsPath)
                 tr("De taal wordt toegepast wanneer je de applicatie opnieuw start."));
         });
     }
-    help->addAction(tr("Over PgAdm Qt"), this, [this] {
+    auto *aboutAction = help->addAction(tr("Over alt-pg-admin"), this, [this] {
         const int libpqVersion = PQlibVersion();
         const auto libpqVersionText = QString("%1.%2").arg(libpqVersion / 10000).arg(libpqVersion % 10000);
-        QMessageBox::about(this, tr("PgAdm Qt"), tr("PgAdm Qt %1\nNative PostgreSQL-beheeromgeving.\n\n"
-            "libpq: %2\nQt: %3\n\n"
-            "Verbindingen via libpq en lokale SQL-bestanden.\n"
-            "Query-uitvoering met doorlopende resultaten en celdetails.\n"
-            "Objectbeheer, rechten en onderhoud volgen.")
+        QMessageBox dialog(this);
+        dialog.setObjectName("aboutDialog");
+        dialog.setWindowTitle("alt-pg-admin");
+        dialog.setIconPixmap(QIcon(":/icons/alt-pg-admin.svg").pixmap(96, 96));
+        dialog.setText(tr("alt-pg-admin %1\nNative PostgreSQL-beheeromgeving.\n\nlibpq: %2\nQt: %3")
             .arg(QCoreApplication::applicationVersion(), libpqVersionText, QString::fromLatin1(qVersion())));
+        dialog.exec();
     });
+    aboutAction->setObjectName("aboutAction");
     auto *toolbar = addToolBar(tr("Werkbalk"));
     toolbar->setObjectName("mainToolbar");
     toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -404,6 +416,7 @@ QueryTab *PgAdmMain::newQuery(const QString &connection)
         exportFullResults(excel);
     });
     connect(query, &QueryTab::connectionChanged, this, [this, query] {
+        restoredTabs.remove(query);
         if (querySessions.contains(query) && queryTargets.value(query) != query->connectionId()) {
             if (!confirmTransactionClose(query)) { query->selectConnection(queryTargets.value(query)); return; }
             closeQuerySession(query);
@@ -428,16 +441,30 @@ QueryTab *PgAdmMain::currentQuery() const
     return qobject_cast<QueryTab *>(queries->currentWidget());
 }
 
-// Show the library name or filename and dirty marker without altering editor contents.
+// Prefer the custom tab label, then library/filename/default title; preserve the dirty marker.
 void PgAdmMain::updateTitle(QueryTab *query)
 {
     QString title = query->filePath().isEmpty() ? query->property("untitledName").toString()
                                                : QFileInfo(query->filePath()).fileName();
     if (!query->property("libraryName").toString().isEmpty()) title = query->property("libraryName").toString();
+    if (!query->property("tabName").toString().isEmpty()) title = query->property("tabName").toString();
     if (query->editor()->document()->isModified()) title += " *";
     const int index = queries->indexOf(query);
     queries->setTabText(index, title);
     queries->setTabToolTip(index, query->filePath());
+}
+
+// Keep a display name independent of the SQL file and named-query library entry.
+void PgAdmMain::renameQueryTab(int index)
+{
+    auto *tab = qobject_cast<QueryTab *>(queries->widget(index));
+    if (!tab) return;
+    bool accepted = false;
+    const auto name = QInputDialog::getText(this, tr("Tabnaam wijzigen"), tr("Naam (leeg = standaardnaam):"),
+        QLineEdit::Normal, tab->property("tabName").toString(), &accepted);
+    if (!accepted) return;
+    tab->setProperty("tabName", name.trimmed());
+    updateTitle(tab);
 }
 
 // Read a UTF-8 SQL file into a fresh tab, preserving a BOM and its per-file layout.
@@ -572,6 +599,7 @@ void PgAdmMain::closeQuery(int index)
 {
     auto *query = qobject_cast<QueryTab *>(queries->widget(index));
     if (!query || !mayClose(query)) return;
+    restoredTabs.remove(query);
     closeQuerySession(query);
     queries->removeTab(index);
     query->deleteLater();
@@ -827,10 +855,15 @@ void PgAdmMain::connectDatabase(const QVariantMap &profile, const QString &datab
             objects->serverConnected(catalogProfile, password);
             updateConnectionState();
             if (openQueryAfterConnect.remove(id)) newQuery(id);
+            reconnectRestoredTabs(serverId);
             statusBar()->showMessage(tr("Verbonden met %1 op %2:%3 — PostgreSQL %4")
                 .arg(info.value("database").toString(), info.value("host").toString(), info.value("port").toString(), info.value("serverVersion").toString()), 10000);
         });
         connect(session, &PgSession::failed, this, [this, id](const QString &message, bool needsPassword) {
+            if (!needsPassword) {
+                for (auto *tab : restoredTabs.values())
+                    if (tab->connectionId() == id) restoredTabs.remove(tab);
+            }
             attemptedPasswords.remove(id);
             const auto serverId = sessionProfiles.value(id).value("serverId").toString();
             if (!serverInUse(serverId)) { objects->serverDisconnected(serverId); serverPasswords.remove(serverId); }
@@ -915,6 +948,11 @@ void PgAdmMain::disconnectProfile()
         const auto target = queryTargets.value(tab);
         if ((all && sessionProfiles.value(target).value("serverId").toString() == serverId) || (!all && target == selected))
             closeQuerySession(tab);
+    }
+    for (auto *tab : restoredTabs.values()) {
+        const auto target = tab->connectionId();
+        if ((all && sessionProfiles.value(target).value("serverId").toString() == serverId) || (!all && target == selected))
+            restoredTabs.remove(tab);
     }
     for (const auto &key : sessionProfiles.keys()) {
         if ((all && sessionProfiles.value(key).value("serverId").toString() == serverId) || (!all && key == selected)) {

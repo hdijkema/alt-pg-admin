@@ -716,6 +716,26 @@ pg_dump-Meldung: %1</translation>
   <context>
     <name>PgAdmMain</name>
     <message>
+      <source>Over alt-pg-admin</source>
+      <translation>Über alt-pg-admin</translation>
+    </message>
+    <message>
+      <source>alt-pg-admin %1&#10;Native PostgreSQL-beheeromgeving.&#10;&#10;libpq: %2&#10;Qt: %3</source>
+      <translation>alt-pg-admin %1&#10;Native PostgreSQL-Verwaltungsanwendung.&#10;&#10;libpq: %2&#10;Qt: %3</translation>
+    </message>
+    <message>
+      <source>Tabnaam wijzigen...</source>
+      <translation>Tab umbenennen...</translation>
+    </message>
+    <message>
+      <source>Tabnaam wijzigen</source>
+      <translation>Tab umbenennen</translation>
+    </message>
+    <message>
+      <source>Naam (leeg = standaardnaam):</source>
+      <translation>Name (leer = Standardname):</translation>
+    </message>
+    <message>
       <location filename="../src/app/pgadmmain.ui" line="14" />
       <source>PgAdmMain</source>
       <translation>PgAdmMain</translation>

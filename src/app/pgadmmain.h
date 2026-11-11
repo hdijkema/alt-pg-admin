@@ -44,6 +44,8 @@ private:
     QueryTab *newQuery(const QString &connection = QString());
     QueryTab *currentQuery() const;
     void updateTitle(QueryTab *query);
+    // Rename only the tab label; empty input restores the filename/library/default title.
+    void renameQueryTab(int index);
     void openQuery();
     void saveNamedQuery();
     void openNamedQuery(const QString &name);
@@ -53,6 +55,9 @@ private:
     // Persist editor contents and targets only; restoration creates no database sessions.
     bool saveEditorTabs();
     void restoreEditorTabs();
+    // After an explicit server login, reconnect restored targets and private tab sessions.
+    // No editor SQL is dispatched; unresolved profiles and failed databases stay disconnected.
+    void reconnectRestoredTabs(const QString &serverId);
     // Store bounded accepted SQL submissions; opening history creates a fresh inactive tab.
     void recordHistory(const QString &sql, QueryTab *tab);
     void refreshHistory();
@@ -111,6 +116,7 @@ private:
     QHash<QString, PgSession *> sessions;
     QHash<QueryTab *, PgSession *> querySessions;
     QHash<QueryTab *, QString> queryTargets;
+    QSet<QueryTab *> restoredTabs;
     struct PendingQuery {
         QString sql;
         QString exportPath;

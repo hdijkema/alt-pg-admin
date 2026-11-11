@@ -359,6 +359,22 @@ private slots:
         QCOMPARE(editor.toPlainText(), QString("SEL"));
     }
 
+    void aboutApplicationIcon()
+    {
+        QTemporaryDir temporary;
+        PgAdmMain window(nullptr, temporary.filePath("settings.ini"));
+        bool rendered = false;
+        QTimer::singleShot(0, &window, [&] {
+            if (auto *dialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                rendered = dialog->objectName() == "aboutDialog" && !dialog->iconPixmap().isNull()
+                    && dialog->windowTitle() == "alt-pg-admin" && dialog->text().contains("libpq:");
+                dialog->accept();
+            }
+        });
+        window.findChild<QAction *>("aboutAction")->trigger();
+        QVERIFY(rendered);
+    }
+
     void editorTabsRestore()
     {
         QTemporaryDir temporary;
@@ -374,6 +390,15 @@ private slots:
             draft->editor()->setPlainText("SELECT 'unsaved';");
             draft->editor()->document()->setModified(true);
             draft->selectConnection("unconnected/profile");
+            QTimer::singleShot(0, &window, [] {
+                if (auto *dialog = qobject_cast<QInputDialog *>(QApplication::activeModalWidget())) {
+                    dialog->setTextValue("Mijn analyse");
+                    dialog->accept();
+                }
+            });
+            tabs->tabBarDoubleClicked(0);
+            QCOMPARE(tabs->tabText(0), QString("Mijn analyse *"));
+            QVERIFY(draft->filePath().isEmpty());
             draft->setColumnWidths({333, 222});
             auto cursor = draft->editor()->textCursor();
             cursor.setPosition(9);
@@ -401,6 +426,7 @@ private slots:
         QVERIFY(draft->editor()->document()->isModified());
         QCOMPARE(draft->editor()->textCursor().position(), 9);
         QCOMPARE(draft->connectionId(), QString("unconnected/profile"));
+        QCOMPARE(tabs->tabText(0), QString("Mijn analyse *"));
         QCOMPARE(draft->columnWidths(), QVariantList({333, 222}));
         auto *file = qobject_cast<QueryTab *>(tabs->widget(1));
         QCOMPARE(file->editor()->toPlainText(), QString("SELECT 2;"));
@@ -421,6 +447,63 @@ private slots:
         });
         QVERIFY(!blocked.close());
         QCOMPARE(unsaved->editor()->toPlainText(), QString("SELECT 'keep me';"));
+    }
+
+    void restoredTabConnections()
+    {
+        if (!qEnvironmentVariableIsSet("PGADM_TEST_PORT")) QSKIP("Requires disposable PostgreSQL 18.");
+        QTemporaryDir temporary;
+        const auto path = temporary.filePath("settings.ini");
+        const auto serverId = profile().value("id").toString();
+        const auto databaseTarget = serverId + '/' + QString::fromLatin1(database.toUtf8().toBase64(QByteArray::Base64UrlEncoding));
+        auto other = profile();
+        other["id"] = "other-" + suffix;
+        other["name"] = "Other server";
+        {
+            QSettings settings(path, QSettings::IniFormat);
+            settings.setValue("connections/profiles", QVariantList{profile(), other});
+            settings.setValue("editor/tabs", QVariantList{
+                QVariantMap{{"target", databaseTarget}, {"sql", "SELECT 1/0;"}, {"tabName", "Legacy database tab"}},
+                QVariantMap{{"target", serverId}, {"server", serverId}, {"database", "postgres"}, {"sql", "SELECT 1/0;"}},
+                QVariantMap{{"target", other.value("id")}, {"sql", "SELECT 1/0;"}}});
+        }
+        PgAdmMain window(nullptr, path);
+        auto *tabs = window.findChild<QTabWidget *>("queryTabs");
+        QCOMPARE(tabs->count(), 3);
+        auto *a = qobject_cast<QueryTab *>(tabs->widget(0));
+        auto *b = qobject_cast<QueryTab *>(tabs->widget(1));
+        auto *c = qobject_cast<QueryTab *>(tabs->widget(2));
+        QCOMPARE(a->connectionId(), databaseTarget);
+        QVERIFY(window.findChildren<PgSession *>().isEmpty());
+        auto *tree = window.findChild<CatalogTree *>("catalogTree");
+        tree->setCurrentItem(tree->serverItem(serverId));
+        window.findChild<QAction *>("connectProfileAction")->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(a->findChild<PgSession *>("querySession") &&
+            a->findChild<PgSession *>("querySession")->state() == PgSession::Connected, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(b->findChild<PgSession *>("querySession") &&
+            b->findChild<PgSession *>("querySession")->state() == PgSession::Connected, 10000);
+        auto *aSession = a->findChild<PgSession *>("querySession");
+        auto *bSession = b->findChild<PgSession *>("querySession");
+        QCOMPARE(aSession->information().value("database").toString(), database);
+        QCOMPARE(bSession->information().value("database").toString(), QString("postgres"));
+        QVERIFY(aSession->information().value("backendPid") != bSession->information().value("backendPid"));
+        QVERIFY(!c->findChild<PgSession *>("querySession"));
+        QCOMPARE(tabs->count(), 3);
+        QVERIFY(!a->isRunning() && !b->isRunning());
+        QCOMPARE(a->findChild<QTableView *>("queryResults")->model()->rowCount(), 0);
+        QCOMPARE(b->findChild<QTableView *>("queryResults")->model()->rowCount(), 0);
+        tabs->setCurrentWidget(a);
+        a->editor()->setPlainText("SELECT current_database();");
+        window.findChild<QAction *>("runQueryAction")->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(!a->isRunning(), 5000);
+        auto *model = qobject_cast<ResultModel *>(a->findChild<QTableView *>("queryResults")->model());
+        QVERIFY(model->text().contains(database));
+        QVERIFY(window.close());
+        QSettings saved(path, QSettings::IniFormat);
+        const auto snapshot = saved.value("editor/tabs").toList().first().toMap();
+        QCOMPARE(snapshot.value("server").toString(), serverId);
+        QCOMPARE(snapshot.value("database").toString(), database);
+        QCOMPARE(snapshot.value("tabName").toString(), QString("Legacy database tab"));
     }
 
     void queryHistory()

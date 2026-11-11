@@ -161,10 +161,23 @@ are not inferred.
 
 `src/app/editorstate.cpp` contains PgAdmMain's settings-based editor persistence. Normal
 exit validates running jobs/queries and transaction closure, then saves tab SQL,
-file/library paths, BOM, dirty state, target, widths, cursor and active tab. Startup
+file/library paths, custom tab name, BOM, dirty state, target ID, explicit server/database,
+widths, cursor and active tab. Startup
 creates QueryTabs only, compares file-backed snapshots with disk to flag external
-changes, and never creates PgSessions. Individual tab closure retains the existing
+changes, and never creates PgSessions. Older snapshots resolve their encoded target
+against the local profiles. After an explicit successful server login,
+`reconnectRestoredTabs` opens the matching database controls and private tab backends,
+using the in-memory authenticated server password. Other profiles stay disconnected;
+no editor SQL is replayed. Connection failures, closed/rebound tabs and explicit
+disconnects remove pending reconnections. Existing eight-session limits still apply.
+Custom names override library/file/default titles without changing files or dirty
+state; double-click and the tab context menu use `renameQueryTab`. An empty name
+restores the normal title. Individual tab closure retains the existing
 save/discard prompt. This is normal-exit restoration, not crash autosave.
+
+The About dialog renders `:/icons/alt-pg-admin.svg` as its own icon, independently
+of the native Windows ICO. The root README introduces the product; detailed usage
+and build instructions are retained in `USER-GUIDE.md`.
 
 Accepted private-session dispatches call `recordHistory`, including execution-to-file
 and lazy-connection dispatch. Rejected submissions/connection failures create no
