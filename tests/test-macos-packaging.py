@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 packaging = runpy.run_path(str(ROOT / 'tools/package-macos.py'))
 check_dependencies = packaging['check_dependencies']
 move_license_notices = packaging['move_license_notices']
+bundle_qt_translations = packaging['bundle_qt_translations']
 
 
 class MacPackagingTest(unittest.TestCase):
@@ -31,6 +32,22 @@ class MacPackagingTest(unittest.TestCase):
             self.assertTrue((binaries / 'readme.txt').is_file())
             self.assertFalse((binaries / 'Lucide-LICENSE.txt').exists())
             self.assertFalse((binaries / 'QtKeychain-COPYING.txt').exists())
+
+    def test_qt_translations_are_bundled_in_resources(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            app = root / 'alt-pg-admin.app'
+            qt = root / 'Qt'
+            (qt / 'translations').mkdir(parents=True)
+            for language in ['nl', 'de']:
+                (qt / f'translations/qtbase_{language}.qm').write_text(language)
+
+            bundle_qt_translations(app, qt)
+
+            for language in ['nl', 'de']:
+                translation = app / f'Contents/Resources/translations/qt_{language}.qm'
+                self.assertEqual(translation.read_text(), language)
+                self.assertFalse((app / f'Contents/MacOS/translations/qt_{language}.qm').exists())
 
     def test_plugin_install_name_is_not_an_import(self):
         # macdeployqt can set an absolute ID inside the staged bundle (the reported CI failure).

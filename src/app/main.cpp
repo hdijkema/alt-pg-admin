@@ -44,7 +44,12 @@ int main(int argc, char *argv[])
         language = "nl";
     }
     QTranslator qtTranslator;
-    if (qtTranslator.load("qt_" + language, QCoreApplication::applicationDirPath() + "/translations")
+#ifdef Q_OS_MACOS
+    const auto qtTranslationsPath = QCoreApplication::applicationDirPath() + "/../Resources/translations";
+#else
+    const auto qtTranslationsPath = QCoreApplication::applicationDirPath() + "/translations";
+#endif
+    if (qtTranslator.load("qt_" + language, qtTranslationsPath)
         || qtTranslator.load("qtbase_" + language, QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
         a.installTranslator(&qtTranslator);
     QTranslator translator;
