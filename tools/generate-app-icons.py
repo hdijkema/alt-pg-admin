@@ -15,11 +15,11 @@ import tempfile
 def generate(inkscape: str, icns_only: bool = False) -> None:
     """Render SVG sizes and write native containers; ICNS-only preserves a supplied ICO."""
     icons = Path(__file__).resolve().parents[1] / "assets/icons"
-    source = icons / "alt-pg-admin.svg"
+    source = icons / "pgadmin-jr.svg"
     sizes = [16, 24, 32, 48, 64, 128, 256, 512, 1024]
     if icns_only:
         sizes = [size for size in sizes if size not in (24, 48)]
-    with tempfile.TemporaryDirectory(prefix="alt-pg-admin-icons-") as directory:
+    with tempfile.TemporaryDirectory(prefix="pgadmin-jr-icons-") as directory:
         images = {}
         for size in sizes:
             png = Path(directory) / f"{size}.png"
@@ -39,7 +39,7 @@ def generate(inkscape: str, icns_only: bool = False) -> None:
             payload.extend(data)
             offset += len(data)
         if not icns_only:
-            (icons / "alt-pg-admin.ico").write_bytes(header + entries + payload)
+            (icons / "pgadmin-jr.ico").write_bytes(header + entries + payload)
         chunks = bytearray()
         for kind, size in [(b"icp4", 16), (b"icp5", 32), (b"icp6", 64),
                            (b"ic07", 128), (b"ic08", 256), (b"ic09", 512),
@@ -47,9 +47,9 @@ def generate(inkscape: str, icns_only: bool = False) -> None:
                            (b"ic13", 256), (b"ic14", 512)]:
             data = images[size]
             chunks.extend(kind + struct.pack(">I", 8 + len(data)) + data)
-        (icons / "alt-pg-admin.icns").write_bytes(b"icns" + struct.pack(">I", 8 + len(chunks)) + chunks)
-    print("Generated assets/icons/alt-pg-admin.icns" if icns_only else
-          "Generated assets/icons/alt-pg-admin.ico and alt-pg-admin.icns")
+        (icons / "pgadmin-jr.icns").write_bytes(b"icns" + struct.pack(">I", 8 + len(chunks)) + chunks)
+    print("Generated assets/icons/pgadmin-jr.icns" if icns_only else
+          "Generated assets/icons/pgadmin-jr.ico and pgadmin-jr.icns")
 
 
 if __name__ == "__main__":

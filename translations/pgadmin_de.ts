@@ -716,12 +716,12 @@ pg_dump-Meldung: %1</translation>
   <context>
     <name>PgAdmMain</name>
     <message>
-      <source>Over alt-pg-admin</source>
-      <translation>Über alt-pg-admin</translation>
+      <source>Over pgadmin-jr</source>
+      <translation>Über pgadmin-jr</translation>
     </message>
     <message>
-      <source>alt-pg-admin %1&#10;Native PostgreSQL-beheeromgeving.&#10;&#10;libpq: %2&#10;Qt: %3</source>
-      <translation>alt-pg-admin %1&#10;Native PostgreSQL-Verwaltungsanwendung.&#10;&#10;libpq: %2&#10;Qt: %3</translation>
+      <source>pgadmin-jr %1&#10;Native PostgreSQL-beheeromgeving.&#10;&#10;libpq: %2&#10;Qt: %3</source>
+      <translation>pgadmin-jr %1&#10;Native PostgreSQL-Verwaltungsanwendung.&#10;&#10;libpq: %2&#10;Qt: %3</translation>
     </message>
     <message>
       <source>Tabnaam wijzigen...</source>
@@ -748,8 +748,8 @@ pg_dump-Meldung: %1</translation>
     <message>
       <location filename="../src/app/pgadmmain.cpp" line="74" />
       <location filename="../src/app/pgadmmain.cpp" line="344" />
-      <source>PgAdm Qt</source>
-      <translation>PgAdm Qt</translation>
+      <source>pgadmin-jr</source>
+      <translation>pgadmin-jr</translation>
     </message>
     <message>
       <location filename="../src/app/pgadmmain.cpp" line="82" />
@@ -1001,13 +1001,8 @@ pg_dump-Meldung: %1</translation>
       <translation>Die Sprache wird beim nächsten Start der Anwendung übernommen.</translation>
     </message>
     <message>
-      <location filename="../src/app/pgadmmain.cpp" line="341" />
-      <source>Over PgAdm Qt</source>
-      <translation>Über PgAdm Qt</translation>
-    </message>
-    <message>
       <location filename="../src/app/pgadmmain.cpp" line="344" />
-      <source>PgAdm Qt %1
+      <source>pgadmin-jr %1
 Native PostgreSQL-beheeromgeving.
 
 libpq: %2
@@ -1016,7 +1011,7 @@ Qt: %3
 Verbindingen via libpq en lokale SQL-bestanden.
 Query-uitvoering met doorlopende resultaten en celdetails.
 Objectbeheer, rechten en onderhoud volgen.</source>
-      <translation>PgAdm Qt %1
+      <translation>pgadmin-jr %1
 Native PostgreSQL-Verwaltungsanwendung.
 
 libpq: %2

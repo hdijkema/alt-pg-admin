@@ -1,4 +1,4 @@
-# alt-pg-admin user and build guide
+# pgadmin-jr user and build guide
 
 A native PostgreSQL administration application built with C++17 and Qt Widgets.
 It provides connection profiles, a lazy object browser, query execution, saved
@@ -14,13 +14,13 @@ Application sources are grouped under `src` by responsibility. See
 [source layout](SOURCE-LAYOUT.md) for the folders, file assignments and include
 conventions. Open the root `CMakeLists.txt` in Qt Creator as before.
 
-The application icon comes from `assets/icons/alt-pg-admin.svg`, with native ICO
+The application icon comes from `assets/icons/pgadmin-jr.svg`, with native ICO
 and ICNS derivatives for Windows/macOS packaging. See [icon assets](../assets/icons/README.md)
 for regeneration instructions. Inkscape is not required for ordinary builds.
 
 ## Quick start
 
-1. Run `build/Release/pgadmin_qt.exe`, or build/run through Qt Creator.
+1. Run `build/Release/pgadmin-jr.exe`, or build/run through Qt Creator.
 2. Choose **Verbinding > Nieuw profiel** and enter the host, port and user.
    Normally use `postgres` as the maintenance database; the user may also be
    `postgres`, depending on your server configuration.
@@ -403,7 +403,7 @@ sudo apt-get install build-essential cmake ninja-build qt6-base-dev qt6-svg-dev 
 cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DPGADM_BUILD_TESTS=ON
 cmake --build build/linux -j 4
 QT_QPA_PLATFORM=offscreen ctest --test-dir build/linux --output-on-failure
-./build/linux/pgadmin_qt
+./build/linux/pgadmin-jr
 ```
 
 Initial configuration downloads the pinned QtKeychain, zlib and libxlsxwriter

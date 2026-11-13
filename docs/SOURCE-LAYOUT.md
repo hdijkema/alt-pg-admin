@@ -8,7 +8,7 @@ for each folder. The application remains one target,
 with the existing small qtxlsxwriter target.
 
 ```text
-alt-pg-admin/
+pgadmin-jr/
   CMakeLists.txt
   README.md
   LICENSE

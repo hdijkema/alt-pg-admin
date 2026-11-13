@@ -1,10 +1,11 @@
-# alt-pg-admin
+# pgadmin-jr
 
-<img src="assets/icons/alt-pg-admin.svg" width="96" alt="alt-pg-admin elephant icon">
+<img src="assets/icons/pgadmin-jr.svg" width="96" alt="pgadmin-jr elephant icon">
 
-**A native desktop application for everyday PostgreSQL work.**
+**A native desktop application for everyday PostgreSQL work.** The name means
+pgAdmin junior: a focused companion for the PostgreSQL tasks you use most often.
 
-alt-pg-admin brings SQL editing, database browsing, result export and administration
+pgadmin-jr brings SQL editing, database browsing, result export and administration
 into a C++/Qt Widgets application. Connect to a server, choose a database and work
 in independent query tabs, each with its own session and transaction.
 
@@ -48,7 +49,7 @@ use the connected role's privileges; the application does not bypass server perm
 
 ## Get started
 
-Download the package for your system from [GitHub Releases](https://github.com/hdijkema/alt-pg-admin/releases).
+Download the package for your system from [GitHub Releases](https://github.com/hdijkema/pgadmin-jr/releases).
 Release builds provide a Windows installer and portable ZIP, an Apple Silicon macOS
 DMG, Debian 12/13 packages for amd64 and ARM64, and an x86_64 Flatpak bundle.
 ARM64 Debian packages require a 64-bit OS with matching dependencies, including

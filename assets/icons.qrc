@@ -1,7 +1,7 @@
 <RCC>
   <qresource prefix="/icons">
-    <file alias="alt-pg-admin.svg">icons/alt-pg-admin.svg</file>
-    <file alias="alt-pg-admin.ico">icons/alt-pg-admin.ico</file>
+    <file alias="pgadmin-jr.svg">icons/pgadmin-jr.svg</file>
+    <file alias="pgadmin-jr.ico">icons/pgadmin-jr.ico</file>
     <file alias="file-plus-2.svg">icons/file-plus-2.svg</file>
     <file alias="folder-open.svg">icons/folder-open.svg</file>
     <file alias="save.svg">icons/save.svg</file>

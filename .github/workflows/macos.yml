@@ -52,7 +52,7 @@ jobs:
         run: bash tools/build-macos.sh
       - uses: actions/upload-artifact@v6
         with:
-          name: alt-pg-admin-macos-arm64
+          name: pgadmin-jr-macos-arm64
           path: dist/*-macos-arm64.dmg
           if-no-files-found: error
           compression-level: 0

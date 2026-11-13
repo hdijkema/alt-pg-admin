@@ -4,7 +4,7 @@ GitHub Actions is the intended build service for distribution. The main workflow
 then builds Windows x64 and calls reusable workflows for Debian 12/13, Flatpak
 and an Apple Silicon macOS DMG. It runs on pushes, pull requests and manual dispatches, with read-only
 build permissions. The workflow
-belongs at the root of the `alt-pg-admin` Git repository.
+belongs at the root of the `pgadmin-jr` Git repository.
 The separate release-publishing job has `contents: write`; the build job stays read-only.
 
 ## Windows job
@@ -35,7 +35,7 @@ integration scripts remain available for development. Packaging retains its
 isolated startup smoke check; no production credentials or signing secrets are needed.
 Checkout, Python setup and artifact upload use their v6 actions with Node.js 24.
 
-After successful packaging, the job uploads `alt-pg-admin-windows-x64`, containing
+After successful packaging, the job uploads `pgadmin-jr-windows-x64`, containing
 the portable ZIP and the Inno Setup installer. The startup and installer reports are uploaded even after a failed packaging step
 and retained for 14 days. Database data directories and application/user settings
 are excluded. Ordinary branch/PR builds produce Actions artifacts only.
@@ -56,7 +56,7 @@ A manual branch run creates a `v`-prefixed tag. PRs and ordinary branch pushes n
 
 The version becomes `PGADM_RELEASE_VERSION` in CMake, the application/About version,
 and each platform package, including the embedded Flatpak application version.
-For example: `alt-pg-admin-0.2.0-windows-x64.zip`. The startup smoke
+For example: `pgadmin-jr-0.2.0-windows-x64.zip`. The startup smoke
 report verifies the executable version before a versioned archive is created.
 Without a release override, the current development version is 0.1.0.
 
@@ -67,14 +67,14 @@ tag against the built commit. `tools/publish-release.sh` creates a missing relea
 with generated notes, or uploads missing assets to an existing release. All eight
 packages must be available from the same workflow run:
 
-- `alt-pg-admin-0.2.0-windows-x64.zip`
-- `alt-pg-admin-0.2.0-windows-x64-setup.exe`
-- `alt-pg-admin_0.2.0-debian12_amd64.deb`
-- `alt-pg-admin_0.2.0-debian13_amd64.deb`
-- `alt-pg-admin_0.2.0-debian12_arm64.deb`
-- `alt-pg-admin_0.2.0-debian13_arm64.deb`
-- `alt-pg-admin-0.2.0-linux-x86_64.flatpak`
-- `alt-pg-admin-0.2.0-macos-arm64.dmg`
+- `pgadmin-jr-0.2.0-windows-x64.zip`
+- `pgadmin-jr-0.2.0-windows-x64-setup.exe`
+- `pgadmin-jr_0.2.0-debian12_amd64.deb`
+- `pgadmin-jr_0.2.0-debian13_amd64.deb`
+- `pgadmin-jr_0.2.0-debian12_arm64.deb`
+- `pgadmin-jr_0.2.0-debian13_arm64.deb`
+- `pgadmin-jr-0.2.0-linux-x86_64.flatpak`
+- `pgadmin-jr-0.2.0-macos-arm64.dmg`
 
 Reports are retained as Actions artifacts and are not attached to releases. A manual release creates a missing tag at that commit.
 Existing release titles, notes and assets are preserved. This also supports a
@@ -103,8 +103,8 @@ Tests, PostgreSQL server binaries, database files and settings are not packaged.
 
 The staged application runs a native Windows startup smoke check with a reduced
 PATH and explicit settings outside the packaged folder. Only after that succeeds
-is a ZIP written to `dist/alt-pg-admin-windows-x64.zip`. It extracts to an
-`alt-pg-admin` folder containing `pgadmin_qt.exe`. Configuration and saved passwords
+is a ZIP written to `dist/pgadmin-jr-windows-x64.zip`. It extracts to an
+`pgadmin-jr` folder containing `pgadmin-jr.exe`. Configuration and saved passwords
 retain their usual per-user locations; this is not a portable-settings mode.
 
 Local validation on 9 November 2026: the shared build script completed, the staged
@@ -124,7 +124,7 @@ This is a build-machine tool, not a dependency installed on application users'
 machines. It is intended for disposable hosted runners or explicit local installer
 development. The product installer does not download or install PostgreSQL services.
 
-`packaging/windows/alt-pg-admin.iss` consumes the same validated staging directory
+`packaging/windows/pgadmin-jr.iss` consumes the same validated staging directory
 as the ZIP. It installs for the current user under LocalAppData/Programs, without
 requesting administrator rights. It provides Dutch/English/German wizard text,
 the application icon, a Start menu shortcut, an optional desktop shortcut and

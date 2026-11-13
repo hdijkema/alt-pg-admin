@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 #########################################################################################################################
-# ALT_PG_ADMIN version 
+# PGADMIN_JR version
 #########################################################################################################################
 
 set(PGADM_RELEASE_VERSION "" CACHE STRING "Release version (major.minor.patch); empty uses the development version")
@@ -12,7 +12,7 @@ if(NOT PGADM_RELEASE_VERSION STREQUAL "")
     endif()
     set(PGADM_VERSION "${PGADM_RELEASE_VERSION}")
 endif()
-project(pgadmin_qt VERSION ${PGADM_VERSION} LANGUAGES C CXX)
+project(pgadmin-jr VERSION ${PGADM_VERSION} LANGUAGES C CXX)
 
 
 #########################################################################################################################
@@ -151,23 +151,23 @@ set(PROJECT_SOURCES
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
-    qt_add_executable(pgadmin_qt
+    qt_add_executable(pgadmin-jr
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
     )
 # Define target properties for Android with Qt 6 as:
-#    set_property(TARGET pgadmin_qt APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
+#    set_property(TARGET pgadmin-jr APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
 #                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
 # For more information, see https://doc.qt.io/qt-6/qt-add-executable.html#target-creation
 else()
     if(ANDROID)
-        add_library(pgadmin_qt SHARED
+        add_library(pgadmin-jr SHARED
             ${PROJECT_SOURCES}
         )
 # Define properties for Android with Qt 5 after find_package() calls as:
 #    set(ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
     else()
-        add_executable(pgadmin_qt
+        add_executable(pgadmin-jr
             ${PROJECT_SOURCES}
         )
     endif()
@@ -177,42 +177,42 @@ endif()
 # Build specs
 #########################################################################################################################
 
-target_link_libraries(pgadmin_qt PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
-target_include_directories(pgadmin_qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_definitions(pgadmin_qt PRIVATE PGADM_APP_VERSION="${PROJECT_VERSION}")
-target_link_libraries(pgadmin_qt PRIVATE PostgreSQL::PostgreSQL)
-target_link_libraries(pgadmin_qt PRIVATE qt6keychain)
-target_link_libraries(pgadmin_qt PRIVATE qtxlsxwriter Qt${QT_VERSION_MAJOR}::Concurrent)
-add_custom_command(TARGET pgadmin_qt POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${libxlsxwriter_SOURCE_DIR}/License.txt" "$<TARGET_FILE_DIR:pgadmin_qt>/libxlsxwriter-LICENSE.txt"
+target_link_libraries(pgadmin-jr PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+target_include_directories(pgadmin-jr PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(pgadmin-jr PRIVATE PGADM_APP_VERSION="${PROJECT_VERSION}")
+target_link_libraries(pgadmin-jr PRIVATE PostgreSQL::PostgreSQL)
+target_link_libraries(pgadmin-jr PRIVATE qt6keychain)
+target_link_libraries(pgadmin-jr PRIVATE qtxlsxwriter Qt${QT_VERSION_MAJOR}::Concurrent)
+add_custom_command(TARGET pgadmin-jr POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${libxlsxwriter_SOURCE_DIR}/License.txt" "$<TARGET_FILE_DIR:pgadmin-jr>/libxlsxwriter-LICENSE.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${zlib_SOURCE_DIR}/LICENSE" "$<TARGET_FILE_DIR:pgadmin_qt>/zlib-LICENSE.txt")
-add_custom_command(TARGET pgadmin_qt POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${qtkeychain_SOURCE_DIR}/COPYING" "$<TARGET_FILE_DIR:pgadmin_qt>/QtKeychain-COPYING.txt")
-add_custom_command(TARGET pgadmin_qt POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/LICENSE.txt" "$<TARGET_FILE_DIR:pgadmin_qt>/Lucide-LICENSE.txt")
+    "${zlib_SOURCE_DIR}/LICENSE" "$<TARGET_FILE_DIR:pgadmin-jr>/zlib-LICENSE.txt")
+add_custom_command(TARGET pgadmin-jr POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${qtkeychain_SOURCE_DIR}/COPYING" "$<TARGET_FILE_DIR:pgadmin-jr>/QtKeychain-COPYING.txt")
+add_custom_command(TARGET pgadmin-jr POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/LICENSE.txt" "$<TARGET_FILE_DIR:pgadmin-jr>/Lucide-LICENSE.txt")
 # Keep runtime dependencies next to both Qt Creator and standalone builds.
 if(WIN32)
     get_filename_component(POSTGRESQL_ROOT "${PostgreSQL_INCLUDE_DIR}" DIRECTORY)
     foreach(runtime libpq.dll libssl-3-x64.dll libcrypto-3-x64.dll libintl-9.dll libiconv-2.dll libwinpthread-1.dll liblz4.dll libzstd.dll)
         if(EXISTS "${POSTGRESQL_ROOT}/bin/${runtime}")
-            add_custom_command(TARGET pgadmin_qt POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${POSTGRESQL_ROOT}/bin/${runtime}" "$<TARGET_FILE_DIR:pgadmin_qt>")
+            add_custom_command(TARGET pgadmin-jr POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${POSTGRESQL_ROOT}/bin/${runtime}" "$<TARGET_FILE_DIR:pgadmin-jr>")
         endif()
     endforeach()
     foreach(tool pg_dump pg_restore psql createdb dropdb)
-        add_custom_command(TARGET pgadmin_qt POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${POSTGRESQL_ROOT}/bin/${tool}.exe" "$<TARGET_FILE_DIR:pgadmin_qt>")
+        add_custom_command(TARGET pgadmin-jr POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${POSTGRESQL_ROOT}/bin/${tool}.exe" "$<TARGET_FILE_DIR:pgadmin-jr>")
     endforeach()
     foreach(notice server_license.txt commandlinetools_3rd_party_licenses.txt)
         if(EXISTS "${POSTGRESQL_ROOT}/${notice}")
-            add_custom_command(TARGET pgadmin_qt POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${POSTGRESQL_ROOT}/${notice}" "$<TARGET_FILE_DIR:pgadmin_qt>")
+            add_custom_command(TARGET pgadmin-jr POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${POSTGRESQL_ROOT}/${notice}" "$<TARGET_FILE_DIR:pgadmin-jr>")
         endif()
     endforeach()
 endif()
 if(MSVC)
-    target_compile_options(pgadmin_qt PRIVATE /utf-8 /W4)
+    target_compile_options(pgadmin-jr PRIVATE /utf-8 /W4)
 endif()
 
 #########################################################################################################################
@@ -282,9 +282,9 @@ endif()
 # If you are developing for iOS or macOS you should consider setting an
 # explicit, fixed bundle identifier manually though.
 if(${QT_VERSION} VERSION_LESS 6.1.0)
-  set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.pgadmin_qt)
+  set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER io.github.hdijkema.AltPgAdmin)
 endif()
-set_target_properties(pgadmin_qt PROPERTIES
+set_target_properties(pgadmin-jr PROPERTIES
     ${BUNDLE_ID_OPTION}
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
@@ -300,25 +300,25 @@ if(WIN32)
     enable_language(RC)
     configure_file(assets/app-icon.rc.in "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc" @ONLY)
     set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc" PROPERTIES
-        OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/alt-pg-admin.ico")
-    target_sources(pgadmin_qt PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc")
+        OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/pgadmin-jr.ico")
+    target_sources(pgadmin-jr PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc")
 elseif(APPLE)
-    target_link_options(pgadmin_qt PRIVATE "-Wl,-headerpad_max_install_names")
-    target_sources(pgadmin_qt PRIVATE assets/icons/alt-pg-admin.icns)
-    set_source_files_properties(assets/icons/alt-pg-admin.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
-    set_target_properties(pgadmin_qt PROPERTIES
-        MACOSX_BUNDLE_ICON_FILE alt-pg-admin.icns
+    target_link_options(pgadmin-jr PRIVATE "-Wl,-headerpad_max_install_names")
+    target_sources(pgadmin-jr PRIVATE assets/icons/pgadmin-jr.icns)
+    set_source_files_properties(assets/icons/pgadmin-jr.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    set_target_properties(pgadmin-jr PROPERTIES
+        MACOSX_BUNDLE_ICON_FILE pgadmin-jr.icns
         MACOSX_BUNDLE_GUI_IDENTIFIER io.github.hdijkema.AltPgAdmin
-        MACOSX_BUNDLE_BUNDLE_NAME alt-pg-admin)
+        MACOSX_BUNDLE_BUNDLE_NAME pgadmin-jr)
 endif()
-install(TARGETS pgadmin_qt
+install(TARGETS pgadmin-jr
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime
 )
 
 if(QT_VERSION_MAJOR EQUAL 6)
-    qt_finalize_executable(pgadmin_qt)
+    qt_finalize_executable(pgadmin-jr)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

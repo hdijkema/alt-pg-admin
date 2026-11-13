@@ -15,13 +15,13 @@ JavaScript package or icon framework. Qt's SVG icon-engine plugin renders them.
 
 ## Application icon
 
-`alt-pg-admin.svg` is the application artwork supplied by Hans, separate from the
+`pgadmin-jr.svg` is the application artwork supplied by Hans, separate from the
 Lucide toolbar set. Qt uses the derived ICO for Windows window/dialog/taskbar icons,
 avoiding SVG font rendering at startup; other platforms use the embedded SVG.
 Linux packaging installs the SVG under the existing desktop application ID.
 
-`alt-pg-admin.ico` contains 16, 24, 32, 48, 64, 128 and 256 pixel images for the
-Windows executable. `alt-pg-admin.icns` supplies macOS bundle sizes through 1024
+`pgadmin-jr.ico` contains 16, 24, 32, 48, 64, 128 and 256 pixel images for the
+Windows executable. `pgadmin-jr.icns` supplies macOS bundle sizes through 1024
 pixels, including retina variants. Both are generated from the SVG and committed.
 To regenerate them after changing the SVG, run:
 

@@ -59,8 +59,8 @@ def package(build: Path, qt: Path, pg: Path, requested_version: str) -> None:
     reports.mkdir()
     image_root = work / 'image'
     image_root.mkdir()
-    app = image_root / 'alt-pg-admin.app'
-    shutil.copytree(build / 'pgadmin_qt.app', app, symlinks=True)
+    app = image_root / 'pgadmin-jr.app'
+    shutil.copytree(build / 'pgadmin-jr.app', app, symlinks=True)
     move_license_notices(app)
     with (app / 'Contents/Info.plist').open('rb') as stream:
         info = plistlib.load(stream)
@@ -83,7 +83,7 @@ def package(build: Path, qt: Path, pg: Path, requested_version: str) -> None:
         (binaries / tool).chmod((binaries / tool).stat().st_mode | 0o200)
         dependency_arguments.extend(['-x', binaries / tool])
     run(dependency_arguments)
-    executable = binaries / 'pgadmin_qt'
+    executable = binaries / 'pgadmin-jr'
     links = subprocess.check_output(['otool', '-L', str(executable)], text=True)
     pq_links = [line.strip().split(' (', 1)[0] for line in links.splitlines()[1:] if 'libpq.' in line]
     if len(pq_links) != 1 or not (frameworks / Path(pq_links[0]).name).is_file():
@@ -136,8 +136,8 @@ def package(build: Path, qt: Path, pg: Path, requested_version: str) -> None:
     run(['codesign', '--verify', '--deep', '--strict', app])
     (image_root / 'Applications').symlink_to('/Applications', target_is_directory=True)
     suffix = '-' + version if requested_version else ''
-    image = work / f'alt-pg-admin{suffix}-macos-arm64.dmg'
-    run(['hdiutil', 'create', '-volname', 'alt-pg-admin', '-srcfolder', image_root,
+    image = work / f'pgadmin-jr{suffix}-macos-arm64.dmg'
+    run(['hdiutil', 'create', '-volname', 'pgadmin-jr', '-srcfolder', image_root,
          '-format', 'UDZO', image])
     run(['hdiutil', 'verify', image])
     mount = work / 'mounted'
@@ -152,7 +152,7 @@ def package(build: Path, qt: Path, pg: Path, requested_version: str) -> None:
             environment.pop(key, None)
         for language in ['nl', 'en', 'de']:
             report = reports / f'startup-{language}.txt'
-            run([mounted / 'Contents/MacOS/pgadmin_qt', '--language', language, '--startup-check',
+            run([mounted / 'Contents/MacOS/pgadmin-jr', '--language', language, '--startup-check',
                  '--settings-file', work / f'settings-{language}.ini', '--startup-report', report],
                 env=environment, timeout=30)
             if f'Application version: {version}' not in report.read_text():

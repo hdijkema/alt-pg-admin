@@ -18,7 +18,7 @@ application's linked modules or deliberately deploy QtQml in the DMG.
 
 `tools/build-macos.sh` builds Release, checks the translation catalogs and window
 UI without database/keychain integration tests, then calls `tools/package-macos.py`.
-The latter copies the bundle as `alt-pg-admin.app`, retaining its version, desktop
+The latter copies the bundle as `pgadmin-jr.app`, retaining its version, desktop
 identity and ICNS icon. Five PostgreSQL client tools go into Contents/MacOS,
 where PgTools already looks. dylibbundler copies their library dependencies to
 Contents/Frameworks and rewrites references; the app uses that same bundled libpq.
@@ -53,8 +53,8 @@ block. Failed checks prevent copying the DMG to `dist` or uploading it as a pack
 
 ## Output and local build
 
-A versioned build creates `alt-pg-admin-0.2.0-macos-arm64.dmg` and the Actions
-artifact `alt-pg-admin-macos-arm64`. Branch builds omit the version in the filename.
+A versioned build creates `pgadmin-jr-0.2.0-macos-arm64.dmg` and the Actions
+artifact `pgadmin-jr-macos-arm64`. Branch builds omit the version in the filename.
 Reports are separate artifacts. Only the main versioned workflow publishes a
 release, after all eight required packages succeed.
 

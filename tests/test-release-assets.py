@@ -24,10 +24,10 @@ class ReleaseAssetsTest(unittest.TestCase):
                  "-c", "commit.gpgsign=false", "commit", "--quiet", "--allow-empty", "-m", "fixture")
         self.packages = self.directory / "release"
         self.packages.mkdir()
-        for name in ("alt-pg-admin-0.2.0-windows-x64.zip", "alt-pg-admin-0.2.0-windows-x64-setup.exe", "alt-pg-admin_0.2.0-debian12_amd64.deb",
-                     "alt-pg-admin_0.2.0-debian13_amd64.deb", "alt-pg-admin_0.2.0-debian12_arm64.deb",
-                     "alt-pg-admin_0.2.0-debian13_arm64.deb", "alt-pg-admin-0.2.0-linux-x86_64.flatpak",
-                     "alt-pg-admin-0.2.0-macos-arm64.dmg"):
+        for name in ("pgadmin-jr-0.2.0-windows-x64.zip", "pgadmin-jr-0.2.0-windows-x64-setup.exe", "pgadmin-jr_0.2.0-debian12_amd64.deb",
+                     "pgadmin-jr_0.2.0-debian13_amd64.deb", "pgadmin-jr_0.2.0-debian12_arm64.deb",
+                     "pgadmin-jr_0.2.0-debian13_arm64.deb", "pgadmin-jr-0.2.0-linux-x86_64.flatpak",
+                     "pgadmin-jr-0.2.0-macos-arm64.dmg"):
             (self.packages / name).write_bytes(b"test fixture")
         binaries = self.directory / "bin"
         binaries.mkdir()
@@ -60,7 +60,7 @@ class ReleaseAssetsTest(unittest.TestCase):
         self.assertEqual(arguments[arguments.index("--target") + 1], self.git("rev-parse", "HEAD"))
 
     def test_missing_or_empty_package_blocks_publication(self):
-        asset = self.packages / "alt-pg-admin_0.2.0-debian13_amd64.deb"
+        asset = self.packages / "pgadmin-jr_0.2.0-debian13_amd64.deb"
         for missing in (False, True):
             with self.subTest(missing=missing):
                 if missing:
@@ -89,7 +89,7 @@ class ReleaseAssetsTest(unittest.TestCase):
         self.assertEqual({Path(p).resolve() for p in calls[-1][3:]}, {p.resolve() for p in self.packages.iterdir()})
 
     def test_existing_assets_are_preserved(self):
-        existing = 'alt-pg-admin-0.2.0-macos-arm64.dmg'
+        existing = 'pgadmin-jr-0.2.0-macos-arm64.dmg'
         self.environment['RELEASE_TEST_ASSETS'] = existing
         result = self.publish()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -107,14 +107,14 @@ class ReleaseAssetsTest(unittest.TestCase):
         self.assertEqual(calls[0][:3], ['release', 'view', 'v0.2.0'])
 
     def test_missing_windows_installer_blocks_publication(self):
-        (self.packages / 'alt-pg-admin-0.2.0-windows-x64-setup.exe').unlink()
+        (self.packages / 'pgadmin-jr-0.2.0-windows-x64-setup.exe').unlink()
         self.assertNotEqual(self.publish().returncode, 0)
         self.assertFalse(self.log.exists())
 
     def test_missing_arm64_package_blocks_publication(self):
         for debian in (12, 13):
             with self.subTest(debian=debian):
-                asset = self.packages / f"alt-pg-admin_0.2.0-debian{debian}_arm64.deb"
+                asset = self.packages / f"pgadmin-jr_0.2.0-debian{debian}_arm64.deb"
                 asset.unlink()
                 result = self.publish()
                 self.assertNotEqual(result.returncode, 0)
@@ -123,7 +123,7 @@ class ReleaseAssetsTest(unittest.TestCase):
                 asset.write_bytes(b"test fixture")
 
     def test_missing_mac_dmg_blocks_publication(self):
-        (self.packages / 'alt-pg-admin-0.2.0-macos-arm64.dmg').unlink()
+        (self.packages / 'pgadmin-jr-0.2.0-macos-arm64.dmg').unlink()
         self.assertNotEqual(self.publish().returncode, 0)
         self.assertFalse(self.log.exists())
 
@@ -143,7 +143,7 @@ class ReleaseAssetsTest(unittest.TestCase):
         output = self.directory / "other" / "manifest.json"
         prepare("0.2.0", output)
         manifest = json.loads(output.read_text())
-        application = next(module for module in manifest["modules"] if module["name"] == "alt-pg-admin")
+        application = next(module for module in manifest["modules"] if module["name"] == "pgadmin-jr")
         self.assertIn("-DPGADM_RELEASE_VERSION=0.2.0", application["config-opts"])
         directory_source = next(source for source in application["sources"] if source["type"] == "dir")
         self.assertEqual((output.parent / directory_source["path"]).resolve(), ROOT)

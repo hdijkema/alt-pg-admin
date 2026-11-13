@@ -29,7 +29,7 @@ QProcessEnvironment PgTools::environment(const QVariantMap &profile, const QStri
     environment.insert("PGSSLMODE", profile.value("sslmode", "prefer").toString());
     environment.insert("PGCONNECT_TIMEOUT", QString::number(qBound(2, profile.value("timeout", 10).toInt(), 120)));
     environment.insert("PGCLIENTENCODING", "UTF8");
-    environment.insert("PGAPPNAME", "PgAdmQt tools");
+    environment.insert("PGAPPNAME", "pgadmin-jr tools");
     if (!password.isEmpty()) environment.insert("PGPASSWORD", password);
     return environment;
 }

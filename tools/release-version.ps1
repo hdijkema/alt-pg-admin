@@ -34,5 +34,5 @@ if ($version -and $version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9
     Version = $version
     Publish = [bool]$version
     Tag = $tag
-    Archive = if ($version) { "alt-pg-admin-$version-windows-x64.zip" } else { 'alt-pg-admin-windows-x64.zip' }
+    Archive = if ($version) { "pgadmin-jr-$version-windows-x64.zip" } else { 'pgadmin-jr-windows-x64.zip' }
 }

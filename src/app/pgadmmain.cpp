@@ -72,7 +72,7 @@ PgAdmMain::PgAdmMain(QWidget *parent, const QString &settingsPath)
     : QMainWindow(parent), settings(settingsPath.isEmpty() ? settingsFile() : settingsPath, QSettings::IniFormat),
       queries(new QTabWidget(this)), objects(new CatalogTree(this)), passwordStore(new PasswordStore(this))
 {
-    setWindowTitle(tr("PgAdm Qt"));
+    setWindowTitle(tr("pgadmin-jr"));
     resize(1200, 800);
     setMinimumSize(800, 550);
     queries->setTabsClosable(true);
@@ -348,14 +348,14 @@ PgAdmMain::PgAdmMain(QWidget *parent, const QString &settingsPath)
                 tr("De taal wordt toegepast wanneer je de applicatie opnieuw start."));
         });
     }
-    auto *aboutAction = help->addAction(tr("Over alt-pg-admin"), this, [this] {
+    auto *aboutAction = help->addAction(tr("Over pgadmin-jr"), this, [this] {
         const int libpqVersion = PQlibVersion();
         const auto libpqVersionText = QString("%1.%2").arg(libpqVersion / 10000).arg(libpqVersion % 10000);
         QMessageBox dialog(this);
         dialog.setObjectName("aboutDialog");
-        dialog.setWindowTitle("alt-pg-admin");
-        dialog.setIconPixmap(QIcon(":/icons/alt-pg-admin.svg").pixmap(96, 96));
-        dialog.setText(tr("alt-pg-admin %1\nNative PostgreSQL-beheeromgeving.\n\nlibpq: %2\nQt: %3")
+        dialog.setWindowTitle("pgadmin-jr");
+        dialog.setIconPixmap(QIcon(":/icons/pgadmin-jr.svg").pixmap(96, 96));
+        dialog.setText(tr("pgadmin-jr %1\nNative PostgreSQL-beheeromgeving.\n\nlibpq: %2\nQt: %3")
             .arg(QCoreApplication::applicationVersion(), libpqVersionText, QString::fromLatin1(qVersion())));
         dialog.exec();
     });

@@ -25,7 +25,7 @@ QT_QPA_PLATFORM=offscreen ctest --test-dir "$build_dir" --output-on-failure -R '
 )
 for language in nl en de; do
     printf 'Checking application startup (%s)\n' "$language"
-    QT_QPA_PLATFORM=offscreen "$build_dir/pgadmin_qt" --language "$language" \
+    QT_QPA_PLATFORM=offscreen "$build_dir/pgadmin-jr" --language "$language" \
         --settings-file "$repo_dir/$build_dir/smoke-$language.ini" --startup-check \
         --startup-report "$repo_dir/$build_dir/startup-$language.txt"
     test -s "$repo_dir/$build_dir/startup-$language.txt"

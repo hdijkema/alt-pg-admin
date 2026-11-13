@@ -1,5 +1,24 @@
 # Implementation guide
 
+## Product name and persisted identities
+
+The product, executable/CMake target, icon assets and distribution packages are
+named `pgadmin-jr` (junior). Repository links use `hdijkema/pgadmin-jr`.
+Qt's internal application name and QtKeychain service remain `PgAdmQt`, while
+the display name is `pgadmin-jr`. This retains existing profiles, restored tabs,
+query libraries and credentials without copying secrets or migrating user files.
+The desktop/Flatpak/macOS/installer identity `io.github.hdijkema.AltPgAdmin` is
+also retained for installed-app upgrades and sandbox data continuity. Its filenames
+therefore retain the old identifier. PostgreSQL's application_name uses the new
+product name. Debian packages replace/conflict with the old `alt-pg-admin` package;
+the Windows installer removes only the superseded executable and shortcuts.
+
+On 13 November 2026 the renamed Windows Release build passed all 52 isolated
+PostgreSQL/application tests. Version 0.3.4 ZIP/installer packaging and private
+install/reinstall/startup/uninstall checks also passed. The 13 release-helper
+tests, five macOS packaging-helper tests and actionlint passed locally. Native
+Linux/macOS packages under the new name still need a hosted workflow run.
+
 This project follows Hans's preference for direct, procedural code, adapted to
 Qt's widget/model and asynchronous APIs. Stateless operations use functions;
 classes own actual UI state, connection state or resource lifetimes. Do not add
@@ -175,7 +194,7 @@ state; double-click and the tab context menu use `renameQueryTab`. An empty name
 restores the normal title. Individual tab closure retains the existing
 save/discard prompt. This is normal-exit restoration, not crash autosave.
 
-The About dialog renders `:/icons/alt-pg-admin.svg` as its own icon, independently
+The About dialog renders `:/icons/pgadmin-jr.svg` as its own icon, independently
 of the native Windows ICO. The root README introduces the product; detailed usage
 and build instructions are retained in `USER-GUIDE.md`.
 
@@ -383,7 +402,7 @@ nontrivial transitions and ownership. Avoid repeating the function name as prose
 Keep multiple statements on separate lines when that makes control flow clearer.
 
 Windows packaging optionally passes the same staged file tree to Inno Setup via
-`packaging/windows/alt-pg-admin.iss`. The pinned compiler bootstrap is confined to
+`packaging/windows/pgadmin-jr.iss`. The pinned compiler bootstrap is confined to
 build-tool setup; it is not an application dependency. CI exercises a private
 installer AppId and fresh fixture for installation/reinstallation/removal, then
 uploads the production ZIP and setup EXE. Release assembly requires both files.

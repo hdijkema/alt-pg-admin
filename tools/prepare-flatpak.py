@@ -12,7 +12,7 @@ def prepare(version: str, output: Path) -> None:
         raise ValueError("Use a numeric release version such as 0.2.0")
     source = Path(__file__).resolve().parents[1] / "packaging/flatpak/io.github.hdijkema.AltPgAdmin.json"
     manifest = json.loads(source.read_text(encoding="utf-8"))
-    application = next(module for module in manifest["modules"] if module["name"] == "alt-pg-admin")
+    application = next(module for module in manifest["modules"] if module["name"] == "pgadmin-jr")
     application["config-opts"].append(f"-DPGADM_RELEASE_VERSION={version}")
     for module in manifest["modules"]:
         for item in module.get("sources", []):

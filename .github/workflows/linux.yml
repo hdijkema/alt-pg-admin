@@ -68,16 +68,16 @@ jobs:
           test "$(dpkg-deb --field ./dist/*.deb Architecture)" = '${{ matrix.platform.arch }}'
           apt-get install -y ./dist/*.deb
           for language in nl en de; do
-            QT_QPA_PLATFORM=offscreen /usr/bin/pgadmin_qt --language "$language" \
+            QT_QPA_PLATFORM=offscreen /usr/bin/pgadmin-jr --language "$language" \
               --settings-file "/tmp/package-$language.ini" --startup-check \
               --startup-report "/tmp/package-$language.txt"
             test -s "/tmp/package-$language.txt"
           done
           command -v pg_dump pg_restore psql createdb dropdb
-          dpkg -L alt-pg-admin
+          dpkg -L pgadmin-jr
       - uses: actions/upload-artifact@v6
         with:
-          name: alt-pg-admin-debian${{ matrix.debian }}-${{ matrix.platform.arch }}
+          name: pgadmin-jr-debian${{ matrix.debian }}-${{ matrix.platform.arch }}
           path: dist/*.deb
           if-no-files-found: error
           retention-days: 14
@@ -117,13 +117,13 @@ jobs:
         with:
           manifest-path: packaging/flatpak/build.json
           repository-url: https://dl.flathub.org/repo/flathub.flatpakrepo
-          bundle: alt-pg-admin-x86_64.flatpak
-          artifact-name: alt-pg-admin-flatpak-x86_64
+          bundle: pgadmin-jr-x86_64.flatpak
+          artifact-name: pgadmin-jr-flatpak-x86_64
           upload-artifact: false
           cache: true
       - name: Check installed sandbox and client tools
         run: |
-          sudo flatpak install --system --noninteractive -y alt-pg-admin-x86_64.flatpak
+          sudo flatpak install --system --noninteractive -y pgadmin-jr-x86_64.flatpak
           mkdir -p build/flatpak-reports
           for language in nl en de; do
             flatpak run --env=QT_QPA_PLATFORM=offscreen io.github.hdijkema.AltPgAdmin \
@@ -139,10 +139,10 @@ jobs:
           PGADM_RELEASE_VERSION: ${{ inputs.version }}
         run: |
           mkdir -p dist
-          mv alt-pg-admin-x86_64.flatpak "dist/alt-pg-admin${PGADM_RELEASE_VERSION:+-$PGADM_RELEASE_VERSION}-linux-x86_64.flatpak"
+          mv pgadmin-jr-x86_64.flatpak "dist/pgadmin-jr${PGADM_RELEASE_VERSION:+-$PGADM_RELEASE_VERSION}-linux-x86_64.flatpak"
       - uses: actions/upload-artifact@v6
         with:
-          name: alt-pg-admin-flatpak-x86_64
+          name: pgadmin-jr-flatpak-x86_64
           path: dist/*.flatpak
           if-no-files-found: error
           compression-level: 0

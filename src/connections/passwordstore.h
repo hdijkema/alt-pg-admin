@@ -13,6 +13,7 @@ class PasswordStore : public QObject
 {
     Q_OBJECT
 public:
+    // Retain the original vault service so existing remembered passwords stay accessible.
     explicit PasswordStore(QObject *parent = nullptr, const QString &service = "PgAdmQt");
     // Hash server ID, host, port and user; exclude database so server logins can be reused.
     static QString key(const QVariantMap &profile);

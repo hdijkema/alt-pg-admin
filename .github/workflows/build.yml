@@ -89,7 +89,7 @@ jobs:
       - name: Upload portable build
         uses: actions/upload-artifact@v6
         with:
-          name: alt-pg-admin-windows-x64
+          name: pgadmin-jr-windows-x64
           path: |
             dist/${{ needs.version.outputs.archive }}
             dist/*-windows-x64-setup.exe
@@ -137,7 +137,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v7
         with:
-          pattern: alt-pg-admin-*
+          pattern: pgadmin-jr-*
           merge-multiple: true
           path: release
       - name: Publish release with all platform packages

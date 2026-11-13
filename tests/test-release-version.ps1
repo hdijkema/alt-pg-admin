@@ -6,7 +6,7 @@ if (!$release.Publish -or $release.Version -ne '1.2.3' -or $release.Tag -ne 'v1.
     throw 'Tag resolution failed.'
 }
 $release = & $resolve -EventName workflow_dispatch -RequestedVersion '0.2.0'
-if (!$release.Publish -or $release.Archive -ne 'alt-pg-admin-0.2.0-windows-x64.zip') {
+if (!$release.Publish -or $release.Archive -ne 'pgadmin-jr-0.2.0-windows-x64.zip') {
     throw 'Manual release resolution failed.'
 }
 $release = & $resolve -EventName workflow_dispatch -RequestedVersion 'v0.2.0'

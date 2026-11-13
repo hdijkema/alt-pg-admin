@@ -3,7 +3,7 @@
   "runtime": "org.kde.Platform",
   "runtime-version": "6.10",
   "sdk": "org.kde.Sdk",
-  "command": "pgadmin_qt",
+  "command": "pgadmin-jr",
   "finish-args": [
     "--share=ipc",
     "--share=network",
@@ -47,15 +47,15 @@
       ]
     },
     {
-      "name": "alt-pg-admin",
+      "name": "pgadmin-jr",
       "buildsystem": "cmake-ninja",
       "config-opts": [
         "-DCMAKE_BUILD_TYPE=Release",
         "-DPGADM_BUILD_TESTS=OFF",
         "-DFETCHCONTENT_FULLY_DISCONNECTED=ON",
-        "-DFETCHCONTENT_SOURCE_DIR_QTKEYCHAIN=/run/build/alt-pg-admin/vendor/qtkeychain",
-        "-DFETCHCONTENT_SOURCE_DIR_ZLIB=/run/build/alt-pg-admin/vendor/zlib",
-        "-DFETCHCONTENT_SOURCE_DIR_LIBXLSXWRITER=/run/build/alt-pg-admin/vendor/libxlsxwriter"
+        "-DFETCHCONTENT_SOURCE_DIR_QTKEYCHAIN=/run/build/pgadmin-jr/vendor/qtkeychain",
+        "-DFETCHCONTENT_SOURCE_DIR_ZLIB=/run/build/pgadmin-jr/vendor/zlib",
+        "-DFETCHCONTENT_SOURCE_DIR_LIBXLSXWRITER=/run/build/pgadmin-jr/vendor/libxlsxwriter"
       ],
       "sources": [
         {

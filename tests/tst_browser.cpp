@@ -367,7 +367,7 @@ private slots:
         QTimer::singleShot(0, &window, [&] {
             if (auto *dialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
                 rendered = dialog->objectName() == "aboutDialog" && !dialog->iconPixmap().isNull()
-                    && dialog->windowTitle() == "alt-pg-admin" && dialog->text().contains("libpq:");
+                    && dialog->windowTitle() == "pgadmin-jr" && dialog->text().contains("libpq:");
                 dialog->accept();
             }
         });

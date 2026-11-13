@@ -19,13 +19,15 @@ int main(int argc, char *argv[])
     startup.start();
     QApplication a(argc, argv);
 #ifdef Q_OS_WIN
-    a.setWindowIcon(QIcon(":/icons/alt-pg-admin.ico"));
+    a.setWindowIcon(QIcon(":/icons/pgadmin-jr.ico"));
 #else
-    a.setWindowIcon(QIcon(":/icons/alt-pg-admin.svg"));
+    a.setWindowIcon(QIcon(":/icons/pgadmin-jr.svg"));
 #endif
     a.setDesktopFileName("io.github.hdijkema.AltPgAdmin");
     QCoreApplication::setOrganizationName("Hans");
     QCoreApplication::setApplicationName("PgAdmQt");
+    // Keep the established settings/vault namespace; only the displayed product name changes.
+    a.setApplicationDisplayName("pgadmin-jr");
     QCoreApplication::setApplicationVersion(PGADM_APP_VERSION);
     const auto arguments = a.arguments();
     const int settingsIndex = arguments.indexOf("--settings-file");

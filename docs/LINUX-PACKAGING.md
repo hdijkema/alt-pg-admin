@@ -7,11 +7,11 @@ It produces five downloadable package artifacts, retained for 14 days:
 
 | Artifact | Contents |
 | --- | --- |
-| `alt-pg-admin-debian12-amd64` | A `.deb` built against Debian 12's Qt and libpq |
-| `alt-pg-admin-debian13-amd64` | A `.deb` built against Debian 13's Qt and libpq |
-| `alt-pg-admin-debian12-arm64` | A native ARM64 `.deb` built against Debian 12's Qt and libpq |
-| `alt-pg-admin-debian13-arm64` | A native ARM64 `.deb` built against Debian 13's Qt and libpq |
-| `alt-pg-admin-flatpak-x86_64` | An installable `.flatpak` bundle |
+| `pgadmin-jr-debian12-amd64` | A `.deb` built against Debian 12's Qt and libpq |
+| `pgadmin-jr-debian13-amd64` | A `.deb` built against Debian 13's Qt and libpq |
+| `pgadmin-jr-debian12-arm64` | A native ARM64 `.deb` built against Debian 12's Qt and libpq |
+| `pgadmin-jr-debian13-arm64` | A native ARM64 `.deb` built against Debian 13's Qt and libpq |
+| `pgadmin-jr-flatpak-x86_64` | An installable `.flatpak` bundle |
 
 The build jobs have read-only repository permissions and do not publish to a
 package repository or Flathub. For a numeric version tag such as `v0.2.0`, or a
@@ -41,7 +41,7 @@ The client tools support backup, restore and database tasks; use client tools at
 least as new as the server for backups. A server newer than the distribution's
 client tools may require a separately installed matching PostgreSQL client.
 
-The package installs `/usr/bin/pgadmin_qt`, a desktop launcher, icon, application
+The package installs `/usr/bin/pgadmin-jr`, a desktop launcher, icon, application
 metadata and licence notices. It has the host access of a normal desktop process,
 under the current user's OS permissions. Database privileges still come from the
 PostgreSQL account. It does not install or configure a PostgreSQL service.
@@ -53,7 +53,7 @@ sudo apt-get install build-essential cmake ninja-build pkg-config python3 \
   qt6-base-dev qt6-l10n-tools qt6-svg-dev qt6-translations-l10n libpq-dev \
   libsecret-1-dev dpkg-dev file fonts-dejavu-core
 ./tools/build-debian.sh
-sudo apt-get install ./dist/alt-pg-admin_*-debian12_amd64.deb
+sudo apt-get install ./dist/pgadmin-jr_*-debian12_amd64.deb
 ```
 
 Use the matching `debian13` filename on Debian 13. `PGADM_RELEASE_VERSION=0.2.0`
@@ -69,7 +69,7 @@ alone is not sufficient: `dpkg --print-architecture` must report `arm64`.
 the installed OS release, for example on a Debian 13-based ARM64 system:
 
 ```sh
-sudo apt-get install ./alt-pg-admin_0.2.0-debian13_arm64.deb
+sudo apt-get install ./pgadmin-jr_0.2.0-debian13_arm64.deb
 ```
 
 The same local build script detects the native package architecture automatically.
@@ -125,7 +125,7 @@ add the version to the filename):
 
 ```sh
 flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install --user ./alt-pg-admin-linux-x86_64.flatpak
+flatpak install --user ./pgadmin-jr-linux-x86_64.flatpak
 flatpak run io.github.hdijkema.AltPgAdmin
 ```
 
@@ -134,7 +134,7 @@ Local build with `flatpak` and `flatpak-builder` installed:
 ```sh
 flatpak-builder --user --install-deps-from=flathub --force-clean --repo=build/flatpak-repo \
   build/flatpak-app packaging/flatpak/io.github.hdijkema.AltPgAdmin.json
-flatpak build-bundle build/flatpak-repo dist/alt-pg-admin-linux-x86_64.flatpak \
+flatpak build-bundle build/flatpak-repo dist/pgadmin-jr-linux-x86_64.flatpak \
   io.github.hdijkema.AltPgAdmin
 ```
 

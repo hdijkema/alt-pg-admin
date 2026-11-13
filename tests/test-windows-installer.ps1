@@ -15,11 +15,11 @@ $installed = [System.IO.Path]::GetFullPath((Join-Path $fixture 'Application'))
 $buildRoot = [System.IO.Path]::GetFullPath((Join-Path $project 'build')) + [System.IO.Path]::DirectorySeparatorChar
 if (!$installed.StartsWith($buildRoot, [System.StringComparison]::OrdinalIgnoreCase)) { throw 'Installer test path escapes the build directory.' }
 New-Item -ItemType Directory -Path $fixture | Out-Null
-$script = Join-Path $project 'packaging/windows/alt-pg-admin.iss'
+$script = Join-Path $project 'packaging/windows/pgadmin-jr.iss'
 & $InnoCompiler '/Q' "/DAppVersion=$Version" "/DSourceDirectory=$SourceDirectory" "/DOutputDirectory=$fixture" `
-    "/DInstallerAppId=io.github.hdijkema.AltPgAdmin.Test.$identity" "/DInstallerName=alt-pg-admin Installer Test $identity" $script
+    "/DInstallerAppId=io.github.hdijkema.AltPgAdmin.Test.$identity" "/DInstallerName=pgadmin-jr Installer Test $identity" $script
 if ($LASTEXITCODE -ne 0) { throw 'Private test installer compilation failed.' }
-$setup = Join-Path $fixture "alt-pg-admin-$Version-windows-x64-setup.exe"
+$setup = Join-Path $fixture "pgadmin-jr-$Version-windows-x64-setup.exe"
 
 # Bound silent processes so a hidden installer prompt cannot hang local or hosted tests.
 function Invoke-InstallerTestProcess([string]$Executable, [string[]]$Arguments) {
@@ -34,9 +34,9 @@ Set-Content -LiteralPath $settings -Value $settingsContents -Encoding ASCII -NoN
 $settingsHash = (Get-FileHash -LiteralPath $settings).Hash
 try {
     Invoke-InstallerTestProcess $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', "/DIR=`"$installed`"", "/LOG=`"$fixture/install.log`"")
-    $executable = Join-Path $installed 'pgadmin_qt.exe'
+    $executable = Join-Path $installed 'pgadmin-jr.exe'
     if (!(Test-Path -LiteralPath $executable)) { throw 'The application was not installed.' }
-    if ((Get-FileHash -LiteralPath $executable).Hash -ne (Get-FileHash -LiteralPath (Join-Path $SourceDirectory 'pgadmin_qt.exe')).Hash) {
+    if ((Get-FileHash -LiteralPath $executable).Hash -ne (Get-FileHash -LiteralPath (Join-Path $SourceDirectory 'pgadmin-jr.exe')).Hash) {
         throw 'Installed application differs from the validated portable application.'
     }
     $report = Join-Path $fixture 'startup.txt'
@@ -59,7 +59,7 @@ try {
         Invoke-InstallerTestProcess $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$fixture/uninstall.log`"")
     }
 }
-if (Test-Path -LiteralPath (Join-Path $installed 'pgadmin_qt.exe')) { throw 'Uninstallation left the application executable.' }
+if (Test-Path -LiteralPath (Join-Path $installed 'pgadmin-jr.exe')) { throw 'Uninstallation left the application executable.' }
 if ((Get-FileHash -LiteralPath $query).Hash -ne $queryHash) { throw 'Uninstallation removed or changed the untracked query file.' }
 if ((Get-FileHash -LiteralPath $settings).Hash -ne $settingsHash) { throw 'Installation or removal changed separate settings.' }
 Write-Output "Installer install/reinstall/startup/uninstall checks passed: $fixture"

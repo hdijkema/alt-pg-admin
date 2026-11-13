@@ -14,11 +14,11 @@ $projectDirectory = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $BuildDirectory = (Resolve-Path -LiteralPath $BuildDirectory).Path
 $QtRoot = (Resolve-Path -LiteralPath $QtRoot).Path
 $staging = Join-Path $BuildDirectory ('packaging-' + [guid]::NewGuid().ToString('N'))
-$application = Join-Path $staging 'alt-pg-admin'
+$application = Join-Path $staging 'pgadmin-jr'
 New-Item -ItemType Directory -Path $application | Out-Null
 
 $files = @(
-    'pgadmin_qt.exe', 'pg_dump.exe', 'pg_restore.exe', 'psql.exe', 'createdb.exe', 'dropdb.exe',
+    'pgadmin-jr.exe', 'pg_dump.exe', 'pg_restore.exe', 'psql.exe', 'createdb.exe', 'dropdb.exe',
     'Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Network.dll', 'Qt6Widgets.dll', 'Qt6Svg.dll',
     'libpq.dll', 'libssl-3-x64.dll', 'libcrypto-3-x64.dll', 'libintl-9.dll', 'libiconv-2.dll',
     'libwinpthread-1.dll', 'liblz4.dll', 'libzstd.dll',
@@ -74,7 +74,7 @@ try {
     $env:QT_QPA_PLATFORM = 'windows'
     $settingsPath = Join-Path $staging 'smoke-settings.ini'
     $arguments = @('--startup-check', '--startup-report', "`"$report`"", '--settings-file', "`"$settingsPath`"")
-    $process = Start-Process -FilePath (Join-Path $application 'pgadmin_qt.exe') -ArgumentList $arguments `
+    $process = Start-Process -FilePath (Join-Path $application 'pgadmin-jr.exe') -ArgumentList $arguments `
         -WorkingDirectory $application -WindowStyle Hidden -PassThru
     if (!$process.WaitForExit(15000)) { $process.Kill(); throw 'The staged application did not finish its startup check.' }
     if ($process.ExitCode -ne 0 -or !(Test-Path -LiteralPath $report)) { throw 'The staged application could not start.' }
@@ -89,7 +89,7 @@ try {
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$archiveName = if ($Version) { "alt-pg-admin-$Version-windows-x64.zip" } else { 'alt-pg-admin-windows-x64.zip' }
+$archiveName = if ($Version) { "pgadmin-jr-$Version-windows-x64.zip" } else { 'pgadmin-jr-windows-x64.zip' }
 $archive = Join-Path $staging $archiveName
 [System.IO.Compression.ZipFile]::CreateFromDirectory($application, $archive, [System.IO.Compression.CompressionLevel]::Optimal, $true)
 $destination = Join-Path $projectDirectory 'dist'
@@ -108,11 +108,11 @@ if ($InnoCompiler) {
     if ($installerVersion -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
         throw 'The installer needs a numeric application version.'
     }
-    $script = Join-Path $projectDirectory 'packaging/windows/alt-pg-admin.iss'
+    $script = Join-Path $projectDirectory 'packaging/windows/pgadmin-jr.iss'
     & $InnoCompiler "/DAppVersion=$installerVersion" "/DSourceDirectory=$application" "/DOutputDirectory=$destination" $script |
         Tee-Object -FilePath (Join-Path $staging 'installer-build.txt')
     if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
-    $installer = Join-Path $destination "alt-pg-admin-$installerVersion-windows-x64-setup.exe"
+    $installer = Join-Path $destination "pgadmin-jr-$installerVersion-windows-x64-setup.exe"
     if (!(Test-Path -LiteralPath $installer)) { throw 'Inno Setup did not produce the expected installer.' }
     Write-Output "Windows installer: $installer"
     if ($TestInstaller) {

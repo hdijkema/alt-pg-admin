@@ -15,20 +15,20 @@ bundle_qt_translations = packaging['bundle_qt_translations']
 class MacPackagingTest(unittest.TestCase):
     def test_license_notices_are_moved_out_of_macos_directory(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
-            app = Path(temporary_directory) / 'alt-pg-admin.app'
+            app = Path(temporary_directory) / 'pgadmin-jr.app'
             binaries = app / 'Contents/MacOS'
             resources = app / 'Contents/Resources'
             binaries.mkdir(parents=True)
             (binaries / 'Lucide-LICENSE.txt').write_text('license')
             (binaries / 'QtKeychain-COPYING.txt').write_text('copying')
-            (binaries / 'pgadmin_qt').write_text('executable')
+            (binaries / 'pgadmin-jr').write_text('executable')
             (binaries / 'readme.txt').write_text('other text')
 
             move_license_notices(app)
 
             self.assertEqual((resources / 'Lucide-LICENSE.txt').read_text(), 'license')
             self.assertEqual((resources / 'QtKeychain-COPYING.txt').read_text(), 'copying')
-            self.assertTrue((binaries / 'pgadmin_qt').is_file())
+            self.assertTrue((binaries / 'pgadmin-jr').is_file())
             self.assertTrue((binaries / 'readme.txt').is_file())
             self.assertFalse((binaries / 'Lucide-LICENSE.txt').exists())
             self.assertFalse((binaries / 'QtKeychain-COPYING.txt').exists())
@@ -36,7 +36,7 @@ class MacPackagingTest(unittest.TestCase):
     def test_qt_translations_are_bundled_in_resources(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            app = root / 'alt-pg-admin.app'
+            app = root / 'pgadmin-jr.app'
             qt = root / 'Qt'
             (qt / 'translations').mkdir(parents=True)
             for language in ['nl', 'de']:
@@ -54,7 +54,7 @@ class MacPackagingTest(unittest.TestCase):
         check_dependencies(Path('libqcocoa.dylib'), '''Load command 0
           cmd LC_ID_DYLIB
       cmdsize 184
-         name /Users/runner/build/image/alt-pg-admin.app/Contents/PlugIns/platforms/libqcocoa.dylib (offset 24)
+         name /Users/runner/build/image/pgadmin-jr.app/Contents/PlugIns/platforms/libqcocoa.dylib (offset 24)
    time stamp 1 Thu Jan  1 00:00:01 1970
 Load command 1
           cmd LC_LOAD_DYLIB
@@ -80,7 +80,7 @@ Load command 3
                     # No ID: an executable's first library entry must still be checked.
                     commands = f'Load command 0\n cmd {command}\n cmdsize 128\n name {dependency} (offset 24)\n'
                     with self.assertRaisesRegex(ValueError, 'External dependency'):
-                        check_dependencies(Path('pgadmin_qt'), commands)
+                        check_dependencies(Path('pgadmin-jr'), commands)
 
     def test_import_matching_the_install_name_is_still_checked(self):
         commands = '''Load command 0
